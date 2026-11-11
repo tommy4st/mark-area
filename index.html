@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>&lt;mark-area&gt; Demo</title>
+    <script type="module" src="./define.ts"></script>
+    <style>
+        :root {
+            color-scheme: light dark;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        body {
+            max-width: 44rem;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            line-height: 1.5;
+        }
+        section {
+            margin-bottom: 2rem;
+        }
+        h2 {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        /* Custom theme via CSS variables & ::part() */
+        mark-area.themed {
+            --ma-bg: #1e1e2e;
+            --ma-color: #cdd6f4;
+            --ma-border: 1px solid #45475a;
+            --ma-radius: 0.75rem;
+            --ma-focus-outline: 2px solid #89b4fa;
+            --ma-focus-border-color: #89b4fa;
+            --ma-toolbar-bg: #181825;
+            --ma-toolbar-border: 1px solid #313244;
+            --ma-toolbar-padding: 0.375rem 0.5rem;
+            --ma-btn-hover-bg: #313244;
+            --ma-link-color: #89b4fa;
+            --ma-bullet-color: #f5c2e7;
+            --ma-code-bg: #313244;
+            --ma-quote-border: #cba6f7;
+            --ma-padding: 0.75rem 1rem;
+        }
+        mark-area.themed::part(toolbar) {
+            border-top-left-radius: 0.75rem;
+            border-top-right-radius: 0.75rem;
+        }
+        /* Custom slotted toolbar */
+        .custom-bar {
+            display: flex;
+            gap: 0.25rem;
+        }
+        .custom-bar button {
+            font: inherit;
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+            border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+            border-radius: 0.25rem;
+            background: transparent;
+            color: inherit;
+            cursor: pointer;
+        }
+        .actions {
+            margin-top: 0.5rem;
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        pre {
+            background: color-mix(in srgb, currentColor 6%, transparent);
+            padding: 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.8125rem;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>&lt;mark-area&gt;</h1>
+
+    <section>
+        <h2>1. Default (with form &amp; required validation)</h2>
+        <form id="demo-form">
+            <mark-area name="notes" rows="5" required placeholder="Write markdown...">## Live Preview Editor
+
+Move your cursor onto **bold**, *italic*, ~~strikethrough~~, `inline code`, or a [link](https://example.com) to reveal the raw Markdown syntax.
+
+- Bullet lists turn into bullets
+- Shortcuts like **Ctrl/Cmd+B** and **Ctrl/Cmd+K** work out of the box
+> Blockquotes and headings are styled live</mark-area>
+            <div class="actions">
+                <button type="submit">Submit</button>
+                <button type="reset">Reset</button>
+            </div>
+        </form>
+        <pre id="output" hidden></pre>
+    </section>
+
+    <section>
+        <h2>2. Custom CSS Variables &amp; ::part()</h2>
+        <mark-area class="themed" rows="3" value="Custom **Catppuccin** theme via `--ma-*` custom properties and `::part(toolbar)`."></mark-area>
+    </section>
+
+    <section>
+        <h2>3. Custom Toolbar via &lt;slot name="toolbar"&gt;</h2>
+        <mark-area rows="3" value="Minimal slotted toolbar using `data-action` attributes.">
+            <div slot="toolbar" class="custom-bar">
+                <button type="button" data-action="bold">Bold</button>
+                <button type="button" data-action="italic">Italic</button>
+                <button type="button" data-action="link">Link</button>
+            </div>
+        </mark-area>
+    </section>
+
+    <section>
+        <h2>4. Always Hide Markdown Markup (&lt;mark-area hide-marks&gt;)</h2>
+        <mark-area hide-marks rows="4">## Clean Rich-Text Feel
+
+In `hide-marks` mode, **bold**, *italic*, ~~strikethrough~~, `code`, and [links](https://example.com) keep their Markdown syntax hidden even while your cursor is inside them.
+
+- Format text using the toolbar buttons or keyboard shortcuts (**Ctrl/Cmd+B**, **Ctrl/Cmd+I**, etc.)</mark-area>
+    </section>
+
+    <section>
+        <h2>5. Table Plugins (opt-in via <code>editor.plugins</code>)</h2>
+        <div class="actions" style="margin-bottom: 0.5rem">
+            <label for="table-mode">Table plugin:</label>
+            <select id="table-mode">
+                <option value="preview" selected>preview (tablePreviewPlugin)</option>
+                <option value="inline">inline (tableInlinePlugin)</option>
+                <option value="wysiwyg">wysiwyg (tableWysiwygPlugin)</option>
+                <option value="">none (absent — no table support)</option>
+            </select>
+        </div>
+        <mark-area id="table-editor" rows="7">## GFM Tables
+
+Switch between **preview**, **inline**, **wysiwyg**, or **none** above, or press the table toolbar button (**Ctrl/Cmd+Alt+T**).
+
+| Feature | Inline | Preview | WYSIWYG |
+| :--- | :---: | :---: | ---: |
+| Raw Markdown + Tab nav | **Yes** | **Yes** | Via source |
+| HTML Table Widget | No | *Outside cursor* | **Always** |
+| Direct cell editing | Raw text | Click cell to edit | `contenteditable` |</mark-area>
+    </section>
+
+    <section>
+        <h2>6. Custom Upload Function (e.g. remote server / Blob URL instead of Base64)</h2>
+        <mark-area id="custom-upload-editor" rows="3" value="Drop, paste, or use the image/file toolbar buttons here. Uses a custom `editor.upload` function."></mark-area>
+    </section>
+
+    <script type="module" src="./demo.js"></script>
+</body>
+</html>

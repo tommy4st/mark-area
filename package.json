@@ -1,0 +1,73 @@
+{
+  "name": "@tommy4st/mark-area",
+  "version": "0.1.0",
+  "description": "A lightweight CodeMirror 6 markdown editor custom element with live preview and form association",
+  "license": "CC0-1.0",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "scripts": {
+    "dev": "bun run watch & bun index.html",
+    "build:bundle": "bun run build:lib && bun run build:standalone",
+    "build:types": "bunx tsc index.ts define.ts tables.ts src/table/inline.ts src/table/preview.ts src/table/wysiwyg.ts --ignoreConfig --allowImportingTsExtensions --rewriteRelativeImportExtensions --declaration --emitDeclarationOnly --outDir dist --target ESNext --module preserve --moduleResolution bundler --lib ESNext,DOM",
+    "build": "bun run build:bundle && bun run build:types",
+    "watch": "bun build standalone.ts --outfile dist/standalone.js --target browser --watch",
+    "typecheck": "bunx tsc --noEmit",
+    "check": "bun run typecheck && bun run build",
+    "clean": "rm -rf dist",
+    "build:lib": "bun build index.ts define.ts tables.ts src/table/inline.ts src/table/preview.ts src/table/wysiwyg.ts --outdir dist --target browser --format esm --packages external --splitting --minify",
+    "build:standalone": "bun build standalone.ts --outfile dist/standalone.js --target browser --minify"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@lezer/markdown": "^1.8.1"
+  },
+  "sideEffects": [
+    "./dist/define.js",
+    "./dist/standalone.js"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./define": {
+      "types": "./dist/define.d.ts",
+      "import": "./dist/define.js"
+    },
+    "./tables": {
+      "types": "./dist/tables.d.ts",
+      "import": "./dist/tables.js"
+    },
+    "./tables/inline": {
+      "types": "./dist/src/table/inline.d.ts",
+      "import": "./dist/src/table/inline.js"
+    },
+    "./tables/preview": {
+      "types": "./dist/src/table/preview.d.ts",
+      "import": "./dist/src/table/preview.js"
+    },
+    "./tables/wysiwyg": {
+      "types": "./dist/src/table/wysiwyg.d.ts",
+      "import": "./dist/src/table/wysiwyg.js"
+    },
+    "./standalone": "./dist/standalone.js"
+  }
+}
