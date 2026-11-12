@@ -1,0 +1,11 @@
+import { type EditorState } from '@codemirror/state';
+import type { EditorAction, SyntaxNode, UploadHandler } from './types.ts';
+export declare function findEnclosingNode(state: EditorState, from: number, to: number, nodeName: string): SyntaxNode | null;
+export declare const defaultUpload: UploadHandler;
+export declare const mac: boolean;
+export declare const mod: string;
+export declare const shift: string;
+export declare const alt: string;
+export declare const icon: (d: string) => string;
+export declare const actions: EditorAction[];
+export declare const actionMap: Map<import("./types.ts").ActionId, EditorAction>;

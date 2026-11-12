@@ -1,6 +1,6 @@
 {
   "name": "@tommy4st/mark-area",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A lightweight CodeMirror 6 markdown editor custom element with live preview and form association",
   "license": "CC0-1.0",
   "main": "dist/index.js",
@@ -14,11 +14,11 @@
     "registry": "https://npm.pkg.github.com"
   },
   "scripts": {
-    "dev": "bun run watch & bun index.html",
+    "dev": "bun index.html",
     "build:bundle": "bun run build:lib && bun run build:standalone",
     "build:types": "bunx tsc index.ts define.ts tables.ts src/table/inline.ts src/table/preview.ts src/table/wysiwyg.ts --ignoreConfig --allowImportingTsExtensions --rewriteRelativeImportExtensions --declaration --emitDeclarationOnly --outDir dist --target ESNext --module preserve --moduleResolution bundler --lib ESNext,DOM",
-    "build": "bun run build:bundle && bun run build:types",
-    "watch": "bun build standalone.ts --outfile dist/standalone.js --target browser --watch",
+    "build": "bun run clean && bun run build:bundle && bun run build:types",
+    "watch": "bun build standalone.ts --outfile out/standalone.js --target browser --watch",
     "typecheck": "bunx tsc --noEmit",
     "check": "bun run typecheck && bun run build",
     "clean": "rm -rf dist",

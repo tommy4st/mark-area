@@ -177,13 +177,19 @@ export const shift = mac ? '⇧' : 'Shift+';
 export const alt = mac ? '⌥' : 'Alt+';
 
 export const icon = (d: string) =>
-    `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="${d}"/></svg>`;
+    `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="${d}"/></svg>`;
 
 export const actions: EditorAction[] = [
-    { id: 'bold', run: wrap('**'), key: 'Mod-b', hint: mod + 'B', html: '<b>B</b>' },
-    { id: 'italic', run: wrap('*'), key: 'Mod-i', hint: mod + 'I', html: '<i>I</i>' },
-    { id: 'strike', run: wrap('~~'), key: 'Mod-Shift-x', hint: mod + shift + 'X', html: '<s>S</s>' },
-    { id: 'heading', run: heading, key: 'Mod-Alt-h', hint: mod + alt + 'H', html: 'H' },
+    { id: 'bold', run: wrap('**'), key: 'Mod-b', hint: mod + 'B', html: icon('M7 4.5h5.5a3.5 3.5 0 0 1 0 7H7m0-7v15m0-8h6.5a3.75 3.75 0 0 1 0 8H7') },
+    { id: 'italic', run: wrap('*'), key: 'Mod-i', hint: mod + 'I', html: icon('M10 4.5h8M6 19.5h8m.5-15-5 15') },
+    {
+        id: 'strike',
+        run: wrap('~~'),
+        key: 'Mod-Shift-x',
+        hint: mod + shift + 'X',
+        html: icon('M16.5 7.5C16 6 14.2 5 12 5c-2.5 0-4.2 1.2-4.2 3 0 1.5 1 2.3 3 3M3.5 12h17M16.5 15c.2 3-2 4-4.5 4s-4.5-1-4.7-3')
+    },
+    { id: 'heading', run: heading, key: 'Mod-Alt-h', hint: mod + alt + 'H', html: icon('M4.5 4.5v15m10-15v15m-10-7.5h10M18 10l2.5-1.5v11') },
     {
         id: 'bullet',
         run: linePrefix(/^[-*+] /, '- '),
@@ -202,7 +208,13 @@ export const actions: EditorAction[] = [
             'M8.242 5.992h12m-12 6.003H20.24m-12 5.999h12M4.117 7.495v-3.75H2.99m1.125 3.75H2.99m1.125 0H5.24m-1.92 2.577a1.125 1.125 0 1 1 1.591 1.59l-1.83 1.83h2.16M2.99 15.745h1.125a1.125 1.125 0 0 1 0 2.25H3.74m0-.002h.375a1.125 1.125 0 0 1 0 2.25H2.99'
         ),
     },
-    { id: 'quote', run: linePrefix(/^> ?/, '> '), key: 'Mod-Shift-9', hint: mod + shift + '9', html: '&rdquo;' },
+    {
+        id: 'quote',
+        run: linePrefix(/^> ?/, '> '),
+        key: 'Mod-Shift-9',
+        hint: mod + shift + '9',
+        html: icon('M4.5 12.5V9a4 4 0 0 1 4-4m-4 7.5h4v6h-4v-6Zm10 0V9a4 4 0 0 1 4-4m-4 7.5h4v6h-4v-6Z')
+    },
     {
         id: 'code',
         run: wrap('`'),

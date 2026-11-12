@@ -4,11 +4,13 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { type MarkdownConfig, Strikethrough } from '@lezer/markdown';
 import type { ActionId, EditorAction, MarkPlugin, UploadHandler, UploadResult } from './types.ts';
-import { actionMap, actions, defaultUpload } from './commands.ts';
+import { actionMap, defaultUpload } from './commands.ts';
 import { createPreview } from './preview.ts';
 import { domHandlers } from './handlers.ts';
 import { getSheet, styles } from './styles.ts';
 import { cellActionFor, el, emit, hostFor } from './utils.ts';
+
+type ActionLabels = Record<string, { label?: string; title?: string }>;
 
 // ---- Web Component ----
 
@@ -22,6 +24,8 @@ export class MarkArea extends HTMLElement {
         'readonly',
         'required',
         'hide-marks',
+        'toolbar',
+        'uploads',
     ];
 
     readonly #internals?: ElementInternals;
@@ -35,7 +39,8 @@ export class MarkArea extends HTMLElement {
     #plugins: Array<MarkPlugin | Extension> = [];
     #userSheets: CSSStyleSheet[] = [];
     #managedSheets = new Set<CSSStyleSheet>();
-    #pluginButtons: HTMLButtonElement[] = [];
+    #buttons: HTMLButtonElement[] = [];
+    #labels: ActionLabels = {};
 
     constructor() {
         super();
@@ -56,9 +61,6 @@ export class MarkArea extends HTMLElement {
         const slot = el('slot', { name: 'toolbar' });
         this.#slot = slot;
 
-        for (const a of actions) {
-            slot.append(this.#createToolbarButton(a));
-        }
 
         bar.append(slot);
         bar.onmousedown = (e) => e.preventDefault();
@@ -73,14 +75,16 @@ export class MarkArea extends HTMLElement {
     }
 
     #createToolbarButton(a: EditorAction): HTMLButtonElement {
+        const l = this.#labels[a.id];
+        const name = l?.title ?? a.id;
         const btn = el(
             'button',
             {
                 type: 'button',
                 tabIndex: -1,
-                title: a.hint ? `${a.id} (${a.hint})` : a.id,
+                title: a.hint ? `${name} (${a.hint})` : name,
                 innerHTML: a.html,
-                ariaLabel: a.id,
+                ariaLabel: l?.label ?? name,
             },
             `button button-${a.id}`
         );
@@ -260,7 +264,7 @@ export class MarkArea extends HTMLElement {
 
     exec(actionId: ActionId): boolean {
         const action = this.#activeActions().get(actionId);
-        if (!action || !this.#view) return false;
+        if (!action || !this.#view || !this.#allowed(actionId)) return false;
         if (cellActionFor.get(this.#view)?.(actionId)) return true;
         this.#view.focus();
         if (!emit(this, 'ma-action', { action: actionId, view: this.#view })) return true;
@@ -300,6 +304,37 @@ export class MarkArea extends HTMLElement {
         if (cur.length !== next.length || cur.some((s, i) => s !== next[i])) {
             this.#root.adoptedStyleSheets = next;
         }
+    }
+
+    /** Upload actions, shortcuts, drop and paste. Opt-in: `uploads` attribute present and not "off". */
+    get uploads(): boolean {
+        const v = this.getAttribute('uploads');
+        return v !== null && v !== 'off';
+    }
+    set uploads(v: boolean) {
+        this.toggleAttribute('uploads', v);
+    }
+
+    /** Space-separated action ids shown in the toolbar, in order. Null shows all actions. */
+    get toolbar(): string[] | null {
+        return this.getAttribute('toolbar')?.split(/\s+/).filter(Boolean) ?? null;
+    }
+    set toolbar(v: string[] | null) {
+        if (v) this.setAttribute('toolbar', v.join(' '));
+        else this.removeAttribute('toolbar');
+    }
+
+    /** Per-action `title` and `label` (aria-label) overrides keyed by action id. */
+    get labels(): ActionLabels {
+        return this.#labels;
+    }
+    set labels(v: ActionLabels | null | undefined) {
+        this.#labels = v ?? {};
+        if (this.#view) this.#syncToolbar();
+    }
+
+    #allowed(id: string) {
+        return this.uploads || (id !== 'image' && id !== 'file');
     }
 
     get upload(): UploadHandler {
@@ -371,7 +406,7 @@ export class MarkArea extends HTMLElement {
             markdown({ extensions: mdConfigs }),
             keymap.of(
                 activeActions
-                    .filter((a) => a.key)
+                    .filter((a) => a.key && this.#allowed(a.id))
                     .map((a) => ({ key: a.key!, run: () => this.exec(a.id), preventDefault: true }))
             ),
             ...pluginExts,
@@ -388,11 +423,14 @@ export class MarkArea extends HTMLElement {
     }
 
     #syncToolbar() {
-        for (const b of this.#pluginButtons) b.remove();
-        this.#pluginButtons = [...this.#activeActions().values()]
-            .filter((a) => !actionMap.has(a.id))
+        for (const b of this.#buttons) b.remove();
+        const map = this.#activeActions();
+        const ids = this.toolbar ?? [...map.keys()];
+        this.#buttons = ids
+            .map((id) => map.get(id as ActionId))
+            .filter((a): a is EditorAction => !!a && this.#allowed(a.id))
             .map((a) => this.#createToolbarButton(a));
-        this.#slot.append(...this.#pluginButtons);
+        this.#slot.append(...this.#buttons);
     }
 
     #syncConfig() {

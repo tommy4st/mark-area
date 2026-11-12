@@ -11,7 +11,7 @@
 - `package.json` / `devbox.json` — Scripts and dependencies.
 
 ## Commands
-- `devbox run dev` (or `bun run dev`) — Watch-build `dist/standalone.js` and start the dev server for `index.html`.
+- `devbox run dev` (or `bun run dev`) — Start the dev server for `index.html` (it imports `define.ts` directly).
 - `devbox run check` (or `bun run check`) — Run `tsc --noEmit` and build `dist/`. Always run this after modifying source files.
 - `devbox run typecheck` (or `bun run typecheck`) — Type-check without emitting files.
 - `devbox run build` (or `bun run build`) — Build the split library and the standalone bundle.

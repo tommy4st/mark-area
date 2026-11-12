@@ -103,7 +103,12 @@ import { MarkArea, defineMarkArea } from '@tommy4st/mark-area';
 | `no-toolbar` | — | `boolean` | `false` | Hides the toolbar completely. |
 | `accept` | — | `string` | `"*/*"` | Accepted file types for the `file` upload picker. |
 | — | `plugins` | `Array<MarkPlugin \| Extension>` | `[]` | Optional plugins (e.g. tables) or raw CodeMirror extensions. |
-| — | `upload` | `UploadHandler` | `defaultUpload` | Custom upload function. |
+| — | `upload` | `UploadHandler` | `defaultUpload` | Custom upload function (used only when `uploads` is on). |
+| `uploads` | `uploads` | `boolean` | `false` | Enables image/file actions, shortcuts, drop and paste. `uploads="off"` disables. |
+| `toolbar` | `toolbar` | `string[]` | all actions | Space-separated action ids, in order, e.g. `toolbar="bold italic link"`. |
+| — | `labels` | `Record<id, { label?, title? }>` | English ids | Translates button `aria-label` (`label`) and tooltip (`title`) by action id. |
+
+Icon size: set `--ma-icon-size` (default `1rem`).
 
 ---
 
@@ -157,8 +162,11 @@ Files can be uploaded via the **toolbar buttons**, **keyboard shortcuts**, **dra
 - Images are embedded as `![filename](url)` and rendered inline in live preview.
 - Other files are inserted as `[filename](url)` download links (`Ctrl/Cmd+Click` opens or downloads).
 
+### Enabling Uploads
+Uploads are off by default: no image/file buttons, shortcuts, drop, or paste handling. Add the `uploads` attribute (or set `editor.uploads = true`) to enable them. `uploads="off"` disables them.
+
 ### Default Behavior (Base64 Inline)
-By default (`defaultUpload`), uploaded files are encoded as Base64 `data:` URLs and inlined directly into the Markdown.
+With uploads enabled and no custom `upload` set, `defaultUpload` encodes files as Base64 `data:` URLs and inlines them into the Markdown. Set `editor.upload` to avoid this.
 
 ### Custom Upload Function
 Provide a custom `upload` function on the element to upload files to a server or object storage and return a URL:
@@ -265,7 +273,7 @@ mark-area {
 - `mark-area::part(image-handle)` — Corner drag-to-resize handle.
 
 ### 3. Custom Toolbar via `<slot name="toolbar">`
-Provide your own toolbar markup; any child element with `data-action="<actionId>"` automatically triggers that formatting command on click:
+Children with `slot="toolbar"` replace the default buttons entirely. Any child element with `data-action="<actionId>"` triggers that command on click:
 
 ```html
 <mark-area>
@@ -312,7 +320,7 @@ With [Devbox](https://www.jetify.com/devbox) or [Bun](https://bun.sh):
 ```bash
 devbox run dev        # Watch-build dist/ and serve index.html demo page with hot reload
 devbox run build      # Build split ESM library, dist/standalone.js, and .d.ts files
-devbox run watch      # Watch and rebuild dist/standalone.js
+devbox run watch      # Watch and rebuild out/standalone.js (gitignored)
 devbox run typecheck  # Run TypeScript type checker (tsc --noEmit)
 devbox run check      # Run typecheck + build
 devbox run clean      # Remove dist/

@@ -8,6 +8,14 @@
       "watch": ["bun run watch"],
       "typecheck": ["bun run typecheck"],
       "check": ["bun run check"],
+      "release": [
+        "set -e",
+        "bun run check",
+        "bun pm version ${1:-patch} --no-git-tag-version",
+        "git add -A",
+        "git commit -m \"v$(bun -p \"require('./package.json').version\")\"",
+        "git push"
+      ],
       "clean": ["bun run clean"]
     }
   }

@@ -53,7 +53,7 @@ export const styles = /* css */ `
     cursor: pointer;
 }
 [part~="button"]:hover { background: var(--ma-btn-hover-bg, color-mix(in srgb, currentColor 10%, transparent)); }
-[part~="button"] svg { width: 1rem; height: 1rem; }
+[part~="button"] svg { width: var(--ma-icon-size, 1rem); height: var(--ma-icon-size, 1rem); }
 .cm-editor, .cm-editor.cm-focused { outline: none !important; flex: 1; }
 .cm-scroller { font-family: inherit; line-height: inherit; }
 .cm-content {

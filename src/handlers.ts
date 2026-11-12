@@ -35,7 +35,7 @@ export const domHandlers = EditorView.domEventHandlers({
 
 function uploadFrom(view: EditorView, event: Event, files?: FileList, pos?: number | null) {
     const host = files?.length ? hostFor.get(view) : undefined;
-    if (!host || host.disabled || host.readOnly) return false;
+    if (!host?.uploads || host.disabled || host.readOnly) return false;
     event.preventDefault();
     if (pos != null) view.dispatch({ selection: EditorSelection.cursor(pos) });
     void host.uploadFiles(files!);
