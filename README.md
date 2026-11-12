@@ -209,6 +209,7 @@ mark-area {
   --ma-font-size: 0.875rem;
   --ma-line-height: 1.5;
   --ma-padding: 0.5rem 0.75rem;
+  --ma-line-padding: 0;
   --ma-rows: 4;
 
   /* Focus, caret, selection & validation */
@@ -261,12 +262,16 @@ mark-area {
 }
 ```
 
+The `--ma-*` variables are the supported styling API.
+
 ### 2. Shadow `::part()` Selectors
 - `mark-area::part(toolbar)` — The toolbar container.
 - `mark-area::part(button)` — All default toolbar buttons.
 - `mark-area::part(button-bold)` — Specific toolbar button (`button-<actionId>`).
 - `mark-area::part(editor)` — The outer CodeMirror `.cm-editor` root.
 - `mark-area::part(content)` — The editable `.cm-content` area.
+- `mark-area::part(scroller)` — The scrolling `.cm-scroller` wrapper.
+- `mark-area::part(line)` — Each `.cm-line` in the content.
 - `mark-area::part(image-wrap)` — Wrapper around embedded preview images.
 - `mark-area::part(image)` — The `<img>` element inside live preview.
 - `mark-area::part(image-presets)` / `mark-area::part(image-preset)` — Preset size bar and buttons.
@@ -286,7 +291,7 @@ Children with `slot="toolbar"` replace the default buttons entirely. Any child e
 ```
 
 ### 4. Adopted Stylesheets
-Inject custom `CSSStyleSheet` rules directly into the component's shadow root:
+Use `adoptStyles` for extra rules only; prefer the `--ma-*` variables for supported styling. It injects a custom `CSSStyleSheet` into the shadow root:
 
 ```ts
 const sheet = new CSSStyleSheet();

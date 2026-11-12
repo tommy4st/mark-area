@@ -20,12 +20,14 @@
     "build": "bun run clean && bun run build:bundle && bun run build:types",
     "watch": "bun build standalone.ts --outfile out/standalone.js --target browser --watch",
     "typecheck": "bunx tsc --noEmit",
+    "test": "bunx playwright test tests --reporter=line",
     "check": "bun run typecheck && bun run build",
     "clean": "rm -rf dist",
     "build:lib": "bun build index.ts define.ts tables.ts src/table/inline.ts src/table/preview.ts src/table/wysiwyg.ts --outdir dist --target browser --format esm --packages external --splitting --minify",
     "build:standalone": "bun build standalone.ts --outfile dist/standalone.js --target browser --minify"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@types/bun": "latest"
   },
   "peerDependencies": {

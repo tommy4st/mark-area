@@ -1,4 +1,5 @@
 {
+  "exclude": ["node_modules", "dist", "tests", "test-results"],
   "compilerOptions": {
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "target": "ESNext",

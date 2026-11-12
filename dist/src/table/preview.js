@@ -1,1 +1,1 @@
-import{M}from"../../index-cj1cy706.js";import"../../index-nffyk8pa.js";import"../../index-hhvkestt.js";export{M as tablePreviewPlugin};
+import{v}from"../../index-w2wazbxm.js";import"../../index-nffyk8pa.js";import"../../index-hhvkestt.js";export{v as tablePreviewPlugin};

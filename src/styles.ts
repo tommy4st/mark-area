@@ -55,8 +55,9 @@ export const styles = /* css */ `
 [part~="button"]:hover { background: var(--ma-btn-hover-bg, color-mix(in srgb, currentColor 10%, transparent)); }
 [part~="button"] svg { width: var(--ma-icon-size, 1rem); height: var(--ma-icon-size, 1rem); }
 .cm-editor, .cm-editor.cm-focused { outline: none !important; flex: 1; }
-.cm-scroller { font-family: inherit; line-height: inherit; }
-.cm-content {
+.cm-editor .cm-scroller { font-family: var(--ma-font, inherit); line-height: inherit; }
+.cm-editor .cm-content {
+    font-family: var(--ma-font, inherit);
     padding: var(--ma-padding, 0.5rem 0.75rem);
     min-height: calc(var(--ma-rows, 4) * 1.5em);
     caret-color: var(--ma-caret-color, currentColor);
@@ -64,7 +65,7 @@ export const styles = /* css */ `
 }
 .cm-cursor, .cm-dropCursor { border-left: 1.5px solid var(--ma-caret-color, currentColor) !important; }
 .cm-selectionBackground { background: var(--ma-selection-bg, color-mix(in srgb, currentColor 20%, transparent)) !important; }
-.cm-line { padding: 0; }
+.cm-editor .cm-line { padding: var(--ma-line-padding, 0); }
 .cm-placeholder { color: var(--ma-placeholder-color, color-mix(in srgb, currentColor 45%, transparent)); }
 .cm-strong { font-weight: 700; }
 .cm-em { font-style: italic; }

@@ -1,5 +1,5 @@
 import { Compartment, EditorSelection, EditorState, type Extension } from '@codemirror/state';
-import { EditorView, drawSelection, keymap, placeholder } from '@codemirror/view';
+import { Decoration, type DecorationSet, EditorView, ViewPlugin, drawSelection, keymap, placeholder } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { type MarkdownConfig, Strikethrough } from '@lezer/markdown';
@@ -11,6 +11,31 @@ import { getSheet, styles } from './styles.ts';
 import { cellActionFor, el, emit, hostFor } from './utils.ts';
 
 type ActionLabels = Record<string, { label?: string; title?: string }>;
+
+const linePartDeco = Decoration.line({ attributes: { part: 'line' } });
+const linePart = ViewPlugin.fromClass(
+    class {
+        decorations: DecorationSet;
+        constructor(view: EditorView) {
+            this.decorations = this.build(view);
+        }
+        update(u: { view: EditorView; docChanged: boolean; viewportChanged: boolean }) {
+            if (u.docChanged || u.viewportChanged) this.decorations = this.build(u.view);
+        }
+        build(view: EditorView): DecorationSet {
+            const ranges = [];
+            for (const { from, to } of view.visibleRanges) {
+                for (let pos = from; pos <= to; ) {
+                    const line = view.state.doc.lineAt(pos);
+                    ranges.push(linePartDeco.range(line.from));
+                    pos = line.to + 1;
+                }
+            }
+            return Decoration.set(ranges, true);
+        }
+    },
+    { decorations: (v) => v.decorations }
+);
 
 // ---- Web Component ----
 
@@ -133,6 +158,7 @@ export class MarkArea extends HTMLElement {
                 }),
             });
             this.#view.dom.setAttribute('part', 'editor');
+            this.#view.scrollDOM.setAttribute('part', 'scroller');
             hostFor.set(this.#view, this);
         }
         this.#syncConfig();
@@ -414,6 +440,7 @@ export class MarkArea extends HTMLElement {
             EditorView.editable.of(!this.disabled && !this.readOnly),
             EditorState.readOnly.of(this.readOnly),
             this.placeholder ? placeholder(this.placeholder) : [],
+            linePart,
             EditorView.contentAttributes.of({
                 part: 'content',
                 'aria-multiline': 'true',
