@@ -1,1 +1,1 @@
-import{T}from"../../index-1r434d6t.js";import"../../index-nffyk8pa.js";import"../../index-hhvkestt.js";export{T as tableInlinePlugin};
+import{M}from"../../index-y695403d.js";import"../../index-ba5ny0de.js";import"../../index-pzk316te.js";export{M as tableInlinePlugin};

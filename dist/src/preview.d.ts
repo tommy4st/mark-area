@@ -5,7 +5,8 @@ export declare const parseImageUrl: (raw: string) => {
     src: string;
     width: string;
 };
-export declare const createPreview: (alwaysHide: boolean) => ViewPlugin<{
+export type MarksMode = 'auto' | 'hide' | 'show';
+export declare const createPreview: (mode: MarksMode) => ViewPlugin<{
     decorations: DecorationSet;
     atomic: DecorationSet;
     hidden: Array<{

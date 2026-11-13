@@ -140,7 +140,7 @@ const applyLink = (view: EditorView, url: string, hide: boolean) => {
 
 const link = (view: EditorView) => {
     const host = hostFor.get(view);
-    if (!host?.hideMarks) {
+    if (!host?.hideMarks || host?.showMarks) {
         applyLink(view, 'https://', false);
         return true;
     }

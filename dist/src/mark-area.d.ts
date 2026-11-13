@@ -32,6 +32,8 @@ export declare class MarkArea extends HTMLElement {
     set required(v: boolean);
     get hideMarks(): boolean;
     set hideMarks(v: boolean);
+    get showMarks(): boolean;
+    set showMarks(v: boolean);
     get plugins(): Array<MarkPlugin | Extension>;
     set plugins(list: Array<MarkPlugin | Extension> | null | undefined);
     get form(): HTMLFormElement | null;

@@ -122,7 +122,16 @@ In `hide-marks` mode, **bold**, *italic*, ~~strikethrough~~, `code`, and [links]
     </section>
 
     <section>
-        <h2>5. Table Plugins (opt-in via <code>editor.plugins</code>)</h2>
+        <h2>5. Always Show Markdown Markup (&lt;mark-area show-marks&gt;)</h2>
+        <mark-area show-marks rows="4">## Always Visible Syntax
+
+In `show-marks` mode, **bold**, *italic*, ~~strikethrough~~, `code`, and [links](https://example.com) keep their Markdown markers visible even when the cursor is elsewhere.
+
+- Live typography and colors still apply without hiding syntax</mark-area>
+    </section>
+
+    <section>
+        <h2>6. Table Plugins (opt-in via <code>editor.plugins</code>)</h2>
         <div class="actions" style="margin-bottom: 0.5rem">
             <label for="table-mode">Table plugin:</label>
             <select id="table-mode">
@@ -144,7 +153,7 @@ Switch between **preview**, **inline**, **wysiwyg**, or **none** above, or press
     </section>
 
     <section>
-        <h2>6. Custom Upload Function (e.g. remote server / Blob URL instead of Base64)</h2>
+        <h2>7. Custom Upload Function (e.g. remote server / Blob URL instead of Base64)</h2>
         <mark-area id="custom-upload-editor" rows="3" value="Drop, paste, or use the image/file toolbar buttons here. Uses a custom `editor.upload` function."></mark-area>
     </section>
 

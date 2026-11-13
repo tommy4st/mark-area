@@ -151,7 +151,11 @@ const textOffset = (cell: Node, node: Node, offset: number) => {
     return r.toString().length;
 };
 
-const hideMarksOf = (view: EditorView) => !!hostFor.get(view)?.hideMarks;
+const showMarksOf = (view: EditorView) => !!hostFor.get(view)?.showMarks;
+const hideMarksOf = (view: EditorView) => {
+    const host = hostFor.get(view);
+    return !!host?.hideMarks && !host?.showMarks;
+};
 
 const inlineTags: Record<string, string> = { STRONG: '**', B: '**', EM: '*', I: '*', S: '~~', STRIKE: '~~', DEL: '~~', CODE: '`' };
 const actionTags: Record<string, string> = { bold: 'strong', italic: 'em', strike: 's', code: 'code' };
@@ -270,12 +274,18 @@ class TableWidget extends WidgetType {
         readonly t: TableData,
         readonly interactive: boolean,
         readonly toolbar: TableToolbarItem[],
-        readonly hide: boolean
+        readonly hide: boolean,
+        readonly show: boolean
     ) {
         super();
     }
     override eq(other: TableWidget) {
-        return this.raw === other.raw && this.interactive === other.interactive && this.hide === other.hide;
+        return (
+            this.raw === other.raw &&
+            this.interactive === other.interactive &&
+            this.hide === other.hide &&
+            this.show === other.show
+        );
     }
     toDOM(view: EditorView) {
         const { headers, aligns, rows } = this.t;
@@ -302,7 +312,8 @@ class TableWidget extends WidgetType {
             if (aligns[c]) cell.style.textAlign = aligns[c];
             cell.dataset.row = String(r);
             cell.dataset.col = String(c);
-            renderInlineCell(cell, text);
+            if (this.show) cell.textContent = text;
+            else renderInlineCell(cell, text);
 
             if (!this.interactive) {
                 cell.onmousedown = (e) => {
@@ -345,7 +356,7 @@ class TableWidget extends WidgetType {
                 saveCaret(cell, r, c);
                 const val = value();
                 if (val !== text) commit((t) => withCell(t, r, c, val));
-                else renderInlineCell(cell, val);
+                else if (!this.show) renderInlineCell(cell, val);
             };
         };
 
@@ -391,15 +402,18 @@ export const tableWidgets = (interactive: boolean, toolbar = defaultTableToolbar
                 this.build(view);
             }
             update(u: ViewUpdate) {
-                if (u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged) this.build(u.view);
+                if (u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged || u.transactions.some((tr) => tr.reconfigured)) {
+                    this.build(u.view);
+                }
             }
             build(view: EditorView) {
                 const out: ReturnType<Decoration['range']>[] = [];
                 const atomic: ReturnType<Decoration['range']>[] = [];
                 const { state } = view;
                 const { doc } = state;
+                const show = showMarksOf(view);
                 const touches = (from: number, to: number) =>
-                    !interactive && view.hasFocus && state.selection.ranges.some((r) => r.from <= to && r.to >= from);
+                    !interactive && (show || (view.hasFocus && state.selection.ranges.some((r) => r.from <= to && r.to >= from)));
                 for (const { from, to } of view.visibleRanges) {
                     syntaxTree(state).iterate({
                         from,
@@ -409,7 +423,14 @@ export const tableWidgets = (interactive: boolean, toolbar = defaultTableToolbar
                             const t = !touches(from, to) && parseMarkdownTable(state, node);
                             if (!t) return false;
                             const first = doc.lineAt(t.from);
-                            const widget = new TableWidget(state.sliceDoc(t.from, t.to), t, interactive, toolbar, hideMarksOf(view));
+                            const widget = new TableWidget(
+                                state.sliceDoc(t.from, t.to),
+                                t,
+                                interactive,
+                                toolbar,
+                                hideMarksOf(view),
+                                show
+                            );
                             const w = Decoration.replace({ widget }).range(first.from, first.to);
                             out.push(w);
                             atomic.push(w);

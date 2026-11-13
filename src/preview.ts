@@ -169,11 +169,13 @@ interface PreviewState {
     hidden: Array<{ from: number; to: number }>;
 }
 
-function buildDecorations(view: EditorView, alwaysHide: boolean): PreviewState {
+export type MarksMode = 'auto' | 'hide' | 'show';
+
+function buildDecorations(view: EditorView, mode: MarksMode): PreviewState {
     const { state } = view;
     const { doc } = state;
     const touches = (from: number, to: number) =>
-        !alwaysHide && view.hasFocus && state.selection.ranges.some((r) => r.from <= to && r.to >= from);
+        mode === 'show' || (mode === 'auto' && view.hasFocus && state.selection.ranges.some((r) => r.from <= to && r.to >= from));
     const out: ReturnType<Decoration['range']>[] = [];
     const atomic: ReturnType<Decoration['range']>[] = [];
     const rawHidden: Array<{ from: number; to: number }> = [];
@@ -262,18 +264,18 @@ function buildDecorations(view: EditorView, alwaysHide: boolean): PreviewState {
     };
 }
 
-export const createPreview = (alwaysHide: boolean) =>
+export const createPreview = (mode: MarksMode) =>
     ViewPlugin.fromClass(
         class {
             decorations: DecorationSet;
             atomic: DecorationSet;
             hidden: Array<{ from: number; to: number }>;
             constructor(view: EditorView) {
-                ({ decorations: this.decorations, atomic: this.atomic, hidden: this.hidden } = buildDecorations(view, alwaysHide));
+                ({ decorations: this.decorations, atomic: this.atomic, hidden: this.hidden } = buildDecorations(view, mode));
             }
             update(u: ViewUpdate) {
-                Object.assign(this, buildDecorations(u.view, alwaysHide));
-                if (!alwaysHide || u.docChanged || !u.selectionSet) return;
+                Object.assign(this, buildDecorations(u.view, mode));
+                if (mode !== 'hide' || u.docChanged || !u.selectionSet) return;
                 const oldSel = u.startState.selection.main;
                 const newSel = u.state.selection.main;
                 if (!oldSel.empty || !newSel.empty || oldSel.head === newSel.head) return;

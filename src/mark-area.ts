@@ -49,6 +49,7 @@ export class MarkArea extends HTMLElement {
         'readonly',
         'required',
         'hide-marks',
+        'show-marks',
         'toolbar',
         'uploads',
     ];
@@ -253,6 +254,13 @@ export class MarkArea extends HTMLElement {
         this.toggleAttribute('hide-marks', v);
     }
 
+    get showMarks(): boolean {
+        return this.hasAttribute('show-marks');
+    }
+    set showMarks(v: boolean) {
+        this.toggleAttribute('show-marks', v);
+    }
+
 
     get plugins(): Array<MarkPlugin | Extension> {
         return this.#plugins;
@@ -436,7 +444,7 @@ export class MarkArea extends HTMLElement {
                     .map((a) => ({ key: a.key!, run: () => this.exec(a.id), preventDefault: true }))
             ),
             ...pluginExts,
-            createPreview(this.hideMarks),
+            createPreview(this.showMarks ? 'show' : this.hideMarks ? 'hide' : 'auto'),
             EditorView.editable.of(!this.disabled && !this.readOnly),
             EditorState.readOnly.of(this.readOnly),
             this.placeholder ? placeholder(this.placeholder) : [],

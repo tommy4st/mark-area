@@ -100,6 +100,7 @@ import { MarkArea, defineMarkArea } from '@tommy4st/mark-area';
 | `disabled` | `disabled` | `boolean` | `false` | Disables editing and toolbar interaction. |
 | `readonly` | `readOnly` | `boolean` | `false` | Makes the editor read-only. |
 | `hide-marks` | `hideMarks` | `boolean` | `false` | Keeps Markdown syntax markers hidden at all times (even when the cursor is inside formatted text). |
+| `show-marks` | `showMarks` | `boolean` | `false` | Keeps Markdown syntax markers visible at all times while preserving live styling (opposite of `hide-marks`). |
 | `no-toolbar` | — | `boolean` | `false` | Hides the toolbar completely. |
 | `accept` | — | `string` | `"*/*"` | Accepted file types for the `file` upload picker. |
 | — | `plugins` | `Array<MarkPlugin \| Extension>` | `[]` | Optional plugins (e.g. tables) or raw CodeMirror extensions. |

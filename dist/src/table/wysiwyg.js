@@ -1,1 +1,1 @@
-import{M}from"../../index-94m07d9f.js";import{u}from"../../index-nffyk8pa.js";import"../../index-hhvkestt.js";export{u as defaultTableToolbar,M as tableWysiwygPlugin};
+import{v}from"../../index-jv11h864.js";import{u}from"../../index-ba5ny0de.js";import"../../index-pzk316te.js";export{u as defaultTableToolbar,v as tableWysiwygPlugin};
