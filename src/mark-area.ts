@@ -148,11 +148,11 @@ export class MarkArea extends HTMLElement {
                         EditorView.updateListener.of((u) => {
                             if (u.docChanged && !this.#syncing) {
                                 this.#updateFormValue();
-                                emit(this, 'input', { value: this.value, view: u.view });
+                                this.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
                             }
                             if (u.focusChanged && !u.view.hasFocus) {
                                 this.classList.add('ma-touched');
-                                emit(this, 'change', { value: this.value, view: u.view });
+                                this.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
                             }
                         }),
                     ],
@@ -378,6 +378,52 @@ export class MarkArea extends HTMLElement {
         this.#upload = fn ?? defaultUpload;
     }
 
+    /** POST endpoint for uploads (multipart field `file`). Used when no custom `upload` is set. */
+    get uploadUrl(): string | null {
+        return this.getAttribute('upload-url');
+    }
+    set uploadUrl(v: string | null) {
+        if (v == null) this.removeAttribute('upload-url');
+        else this.setAttribute('upload-url', v);
+    }
+
+    /** CSRF token sent as `X-CSRF-Token`. Falls back to `<meta name="csrf-token">`. */
+    get csrfToken(): string | null {
+        return (
+            this.getAttribute('csrf-token') ??
+            document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ??
+            null
+        );
+    }
+    set csrfToken(v: string | null) {
+        if (v == null) this.removeAttribute('csrf-token');
+        else this.setAttribute('csrf-token', v);
+    }
+
+    async #postUpload(file: File, kind: 'image' | 'file'): Promise<UploadResult> {
+        const body = new FormData();
+        body.append('file', file);
+        body.append('kind', kind);
+        const token = this.csrfToken;
+        const res = await fetch(this.uploadUrl!, {
+            method: 'POST',
+            body,
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json', ...(token ? { 'X-CSRF-Token': token } : {}) },
+        });
+        if (!res.ok) {
+            const body = await res.text().catch(() => '');
+            let message = body.trim();
+            try {
+                const json = JSON.parse(body) as { error?: string; message?: string };
+                message = json.error ?? json.message ?? message;
+            } catch {}
+            throw new Error(message || `Upload failed: ${res.status} ${res.statusText}`);
+        }
+        const type = res.headers.get('content-type') ?? '';
+        return type.includes('json') ? ((await res.json()) as UploadResult) : (await res.text()).trim();
+    }
+
     pickFiles(kind: 'image' | 'file' = 'file') {
         if (this.disabled || this.readOnly) return;
         const input = el('input', {
@@ -397,6 +443,7 @@ export class MarkArea extends HTMLElement {
         if (!list.length) return;
 
         this.toggleAttribute('uploading', true);
+        this.toggleAttribute('upload-error', false);
         try {
             const snippets: string[] = [];
             for (const file of list) {
@@ -408,10 +455,22 @@ export class MarkArea extends HTMLElement {
                     result: undefined as Promise<UploadResult> | UploadResult | undefined,
                 };
                 if (!emit(this, 'ma-upload', detail)) continue;
-                const res = await (detail.result ?? this.#upload(file, fileKind));
-                const url = typeof res === 'string' ? res : res.url;
-                const name = ((typeof res === 'object' && res.name) || file.name || 'file').replace(/[\[\]]/g, '');
-                snippets.push(fileKind === 'image' ? `![${name}](${url})` : `[${name}](${url})`);
+                try {
+                    const res = await (detail.result ??
+                        (this.#upload === defaultUpload && this.uploadUrl
+                            ? this.#postUpload(file, fileKind)
+                            : this.#upload(file, fileKind)));
+                    const url = typeof res === 'string' ? res : res?.url;
+                    if (!url) throw new Error('Upload returned no URL');
+                    const name = ((typeof res === 'object' && res.name) || file.name || 'file').replace(/[\[\]]/g, '');
+                    snippets.push(fileKind === 'image' ? `![${name}](${url})` : `[${name}](${url})`);
+                } catch (err) {
+                    const error = err instanceof Error ? err : new Error(String(err));
+                    this.toggleAttribute('upload-error', true);
+                    if (emit(this, 'ma-upload-error', { file, kind: fileKind, error })) {
+                        console.error(`mark-area: upload of "${file.name}" failed`, error);
+                    }
+                }
             }
             if (!snippets.length) return;
             const insert = snippets.join('\n');

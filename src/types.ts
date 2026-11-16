@@ -5,6 +5,8 @@ import type { MarkdownConfig } from '@lezer/markdown';
 
 export type SyntaxNode = ReturnType<ReturnType<typeof syntaxTree>['resolveInner']>;
 export type ActionId =
+    | 'undo'
+    | 'redo'
     | 'bold'
     | 'italic'
     | 'strike'

@@ -3,7 +3,7 @@ import type { syntaxTree } from '@codemirror/language';
 import type { EditorView } from '@codemirror/view';
 import type { MarkdownConfig } from '@lezer/markdown';
 export type SyntaxNode = ReturnType<ReturnType<typeof syntaxTree>['resolveInner']>;
-export type ActionId = 'bold' | 'italic' | 'strike' | 'heading' | 'bullet' | 'ordered' | 'quote' | 'code' | 'link' | 'image' | 'file' | 'table' | (string & {});
+export type ActionId = 'undo' | 'redo' | 'bold' | 'italic' | 'strike' | 'heading' | 'bullet' | 'ordered' | 'quote' | 'code' | 'link' | 'image' | 'file' | 'table' | (string & {});
 export type UploadResult = string | {
     url: string;
     name?: string;

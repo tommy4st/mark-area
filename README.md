@@ -105,6 +105,8 @@ import { MarkArea, defineMarkArea } from '@tommy4st/mark-area';
 | `accept` | — | `string` | `"*/*"` | Accepted file types for the `file` upload picker. |
 | — | `plugins` | `Array<MarkPlugin \| Extension>` | `[]` | Optional plugins (e.g. tables) or raw CodeMirror extensions. |
 | — | `upload` | `UploadHandler` | `defaultUpload` | Custom upload function (used only when `uploads` is on). |
+| `upload-url` | `uploadUrl` | `string` | — | POST endpoint used when no custom `upload` is set. Sends multipart fields `file` and `kind`; expects JSON `{ url, name? }` or a plain-text URL. |
+| `csrf-token` | `csrfToken` | `string` | `<meta name="csrf-token">` | Sent as the `X-CSRF-Token` header with `upload-url` requests. |
 | `uploads` | `uploads` | `boolean` | `false` | Enables image/file actions, shortcuts, drop and paste. `uploads="off"` disables. |
 | `toolbar` | `toolbar` | `string[]` | all actions | Space-separated action ids, in order, e.g. `toolbar="bold italic link"`. |
 | — | `labels` | `Record<id, { label?, title? }>` | English ids | Translates button `aria-label` (`label`) and tooltip (`title`) by action id. |
@@ -123,6 +125,8 @@ Icon size: set `--ma-icon-size` (default `1rem`).
 
 | Action ID | Description | Shortcut (Mac / Windows & Linux) |
 | --- | --- | --- |
+| `undo` | Undo last change | `⌘Z` / `Ctrl+Z` |
+| `redo` | Redo last undone change | `⌘⇧Z` / `Ctrl+Y` |
 | `bold` | Bold (`**text**`) | `⌘B` / `Ctrl+B` |
 | `italic` | Italic (`*text*`) | `⌘I` / `Ctrl+I` |
 | `strike` | Strikethrough (`~~text~~`) | `⌘⇧X` / `Ctrl+Shift+X` |
@@ -185,6 +189,30 @@ editor.upload = async (file: File) => {
 ```
 
 While an upload is running, the `<mark-area uploading>` attribute is present for styling loading states.
+
+### Upload URL
+Set `upload-url` to POST files to a server without writing an upload function:
+
+```html
+<meta name="csrf-token" content="...">
+<mark-area uploads upload-url="/api/upload"></mark-area>
+```
+
+Each file is sent as multipart form data with the fields `file` and `kind` (`image` or `file`). The `X-CSRF-Token` header comes from the `csrf-token` attribute, or else from `<meta name="csrf-token">`. Respond with JSON `{ "url": "...", "name": "..." }` or a plain-text URL. A custom `editor.upload` or an `ma-upload` listener takes priority over `upload-url`.
+
+### Upload Errors
+Each file uploads independently. A failed file does not stop the others, and successful files are still inserted. On each failure:
+- The `upload-error` attribute is set on the element for styling. The next upload clears it.
+- A cancelable `ma-upload-error` event fires with `{ file, kind, error }`. Call `preventDefault()` to suppress the default `console.error`.
+
+For `upload-url` requests, a non-2xx response becomes the error message. The message is taken from JSON `error` or `message`, else from the response text, else from the HTTP status.
+
+```ts
+editor.addEventListener('ma-upload-error', (e) => {
+  e.preventDefault();
+  showToast(`${e.detail.file.name}: ${e.detail.error.message}`);
+});
+```
 
 ### Image Resizing
 Embedded images can be resized in live preview:
@@ -308,12 +336,13 @@ All events bubble and are `composed: true` (cross Shadow DOM boundaries). Cancel
 
 | Event | Cancelable | `event.detail` | Description |
 | --- | --- | --- | --- |
-| `input` | No | `{ value: string, view: EditorView }` | Fired whenever the document text changes. |
-| `change` | No | `{ value: string, view: EditorView }` | Fired when the editor loses focus. |
+| `input` | No | — (plain `Event`) | Fired whenever the document text changes. Read `event.target.value`. Works with Alpine `x-model`. |
+| `change` | No | — (plain `Event`) | Fired when the editor loses focus. Works with `x-model.lazy`. |
 | `ma-action` | **Yes** | `{ action: ActionId, view: EditorView }` | Fired before running any toolbar/shortcut command (`bold`, `link`, `image`, etc.). Call `preventDefault()` to handle it yourself. |
 | `ma-link-prompt` | **Yes** | `{ url: string, exists: boolean, apply: (url: string \| null) => void }` | Fired by the `link` action when `hide-marks` is set. Call `preventDefault()` to show your own UI, then call `apply(url)` (empty string removes an existing link, `null` cancels). Default is `window.prompt`. |
 | `ma-upload` | **Yes** | `{ file: File, kind: 'image' \| 'file', result?: Promise<UploadResult> \| UploadResult }` | Fired per file before upload. Set `e.detail.result = uploadFn(file)` to supply a custom URL via event listener, or `preventDefault()` to skip the file. |
 | `ma-uploaded` | No | `{ snippets: string[], files: File[], view: EditorView }` | Fired after uploaded Markdown snippets are inserted. |
+| `ma-upload-error` | **Yes** | `{ file: File, kind: 'image' \| 'file', error: Error }` | Fired per failed file. Call `preventDefault()` to suppress the default `console.error`. Sets the `upload-error` attribute. |
 | `ma-link-click` | **Yes** | `{ href: string, label: string, width: string, kind: 'Link' \| 'Image', originalEvent: MouseEvent }` | Fired on `Ctrl/Cmd+Click` of a link or image. Call `preventDefault()` to handle navigation/download yourself. |
 | `ma-image-resize` | **Yes** | `{ src: string, width: string, view: EditorView }` | Fired before committing a new image width (`#w=...`). |
 

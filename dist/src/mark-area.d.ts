@@ -55,6 +55,12 @@ export declare class MarkArea extends HTMLElement {
     set labels(v: ActionLabels | null | undefined);
     get upload(): UploadHandler;
     set upload(fn: UploadHandler | null | undefined);
+    /** POST endpoint for uploads (multipart field `file`). Used when no custom `upload` is set. */
+    get uploadUrl(): string | null;
+    set uploadUrl(v: string | null);
+    /** CSRF token sent as `X-CSRF-Token`. Falls back to `<meta name="csrf-token">`. */
+    get csrfToken(): string | null;
+    set csrfToken(v: string | null);
     pickFiles(kind?: 'image' | 'file'): void;
     uploadFiles(files: Iterable<File> | ArrayLike<File>, kind?: 'image' | 'file'): Promise<void>;
 }

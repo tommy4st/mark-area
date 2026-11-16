@@ -27,6 +27,8 @@
   - Inline commands (`wrap`, `link`): When already inside the target syntax node, select the full node and strip markers; when collapsed outside, select the closest word on the current line (`targetRange`) and apply markers.
   - Block commands (`heading`, `bullet`, `ordered`, `quote`): Always operate on the current line at the cursor (`selection.main.head`), toggling or replacing competing block prefixes (`blockPrefix`).
 - **Events & Uploads**:
-  - Forward rich `detail` payloads via cancelable `CustomEvent`s (`emit()`): `input`, `change`, `ma-action`, `ma-upload`, `ma-uploaded`, `ma-link-click`, `ma-image-resize`.
+  - `input` and `change` are plain `Event`s (no `detail`) so Alpine `x-model` reads `el.value`.
+  - Forward rich `detail` payloads via cancelable `CustomEvent`s (`emit()`): `ma-action`, `ma-upload`, `ma-uploaded`, `ma-upload-error`, `ma-link-click`, `ma-image-resize`.
+  - `upload-url` (+ `csrf-token` or `<meta name="csrf-token">`) enables built-in POST uploads; upload failures never abort the batch.
   - Default upload (`defaultUpload`) encodes files as Base64 `data:` URLs; users can override `editor.upload = async (file, kind) => ...` or intercept `ma-upload`.
   - Image widths are stored in the URL hash fragment (`![alt](url#w=300)` or `![alt](url#w=50%)`) and parsed by `parseImageUrl()`.
