@@ -4,7 +4,7 @@
 Add an opt-in **custom block** plugin to `<mark-area>`. It parses fenced container directives:
 
 ```md
-:::vcard{name="Ada Lovelace" email="ada@example.com" phone="+44 …"}
+:::vcard{name="Ada Lovelace" email="ada@example.com" phone="+44 …" photo="url/somefile.jpg"}
 Optional Markdown body (role, address, notes).
 :::
 
