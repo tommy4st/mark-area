@@ -4,4 +4,4 @@ import { resolveToolbar, tableRawToolbar, type TableToolbarOptions } from './wid
 
 /** GFM Table syntax + monospace raw editing + Tab/Shift-Tab cell navigation & auto-padding + toolbar (see `tableWysiwygPlugin` options) */
 export const tableInlinePlugin = (options: TableToolbarOptions = {}): MarkPlugin =>
-    tablePlugin(tableRawEditing, tableRawToolbar(resolveToolbar(options)));
+  tablePlugin(tableRawEditing, tableRawToolbar(resolveToolbar(options)));

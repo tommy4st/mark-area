@@ -19,7 +19,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: latest
 
       - name: Typecheck, build and unit tests
         run: |
@@ -27,6 +27,4 @@ jobs:
           bun run check
 
       - name: End-to-end tests
-        run: |
-          bunx playwright install --with-deps chromium
-          bun run test:e2e
+        run: bun run test:e2e:ci

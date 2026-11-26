@@ -4,4 +4,4 @@ import { resolveToolbar, tableRawToolbar, tableWidgets, type TableToolbarOptions
 
 /** Hybrid live-preview widget when cursor is outside; raw Markdown + Tab navigation + toolbar when cursor is inside */
 export const tablePreviewPlugin = (options: TableToolbarOptions = {}): MarkPlugin =>
-    tablePlugin(tableRawEditing, tableRawToolbar(resolveToolbar(options)), tableWidgets(false));
+  tablePlugin(tableRawEditing, tableRawToolbar(resolveToolbar(options)), tableWidgets(false));

@@ -9,10 +9,10 @@ import { emit, escapeMdUrl } from './utils.ts';
 // ---- Formatting commands ----
 
 const markerNode: Record<string, string> = {
-    '**': 'StrongEmphasis',
-    '*': 'Emphasis',
-    '~~': 'Strikethrough',
-    '`': 'InlineCode',
+  '**': 'StrongEmphasis',
+  '*': 'Emphasis',
+  '~~': 'Strikethrough',
+  '`': 'InlineCode',
 };
 
 const blockPrefixSrc = '(?:#{1,6} |(?:[-*+]|\\d+\\.) |> ?)';
@@ -20,279 +20,284 @@ const blockPrefix = new RegExp(`^${blockPrefixSrc}`);
 const blockPrefixes = new RegExp(`^${blockPrefixSrc}+`);
 
 export function findEnclosingNode(state: EditorState, from: number, to: number, nodeName: string): SyntaxNode | null {
-    const tree = syntaxTree(state);
-    for (const side of [0, 1, -1] as const) {
-        for (let n: SyntaxNode | null = tree.resolveInner(from, side); n; n = n.parent) {
-            if (n.name === nodeName && n.from <= from && n.to >= to) return n;
-        }
+  const tree = syntaxTree(state);
+  for (const side of [0, 1, -1] as const) {
+    for (let n: SyntaxNode | null = tree.resolveInner(from, side); n; n = n.parent) {
+      if (n.name === nodeName && n.from <= from && n.to >= to) return n;
     }
-    return null;
+  }
+  return null;
 }
 
 function targetRange(state: EditorState, from: number, to: number): { from: number; to: number } {
-    if (from < to) return { from, to };
-    const direct = state.wordAt(from);
-    if (direct) return direct;
+  if (from < to) return { from, to };
+  const direct = state.wordAt(from);
+  if (direct) return direct;
 
-    const line = state.doc.lineAt(from);
-    const [prefix = ''] = line.text.match(blockPrefixes) || [];
-    const start = line.from + prefix.length;
-    let best: { from: number; to: number; dist: number } | null = null;
+  const line = state.doc.lineAt(from);
+  const [prefix = ''] = line.text.match(blockPrefixes) || [];
+  const start = line.from + prefix.length;
+  let best: { from: number; to: number; dist: number } | null = null;
 
-    for (const m of line.text.slice(prefix.length).matchAll(/[\p{L}\p{N}_]+/gu)) {
-        const wFrom = start + m.index!;
-        const wTo = wFrom + m[0].length;
-        const dist = from < wFrom ? wFrom - from : from > wTo ? from - wTo : 0;
-        if (!best || dist < best.dist) best = { from: wFrom, to: wTo, dist };
-    }
-    return best ? { from: best.from, to: best.to } : { from, to };
+  for (const m of line.text.slice(prefix.length).matchAll(/[\p{L}\p{N}_]+/gu)) {
+    const wFrom = start + m.index!;
+    const wTo = wFrom + m[0].length;
+    const dist = from < wFrom ? wFrom - from : from > wTo ? from - wTo : 0;
+    if (!best || dist < best.dist) best = { from: wFrom, to: wTo, dist };
+  }
+  return best ? { from: best.from, to: best.to } : { from, to };
 }
 
 const wrap = (marker: string) => (view: EditorView) => {
-    const len = marker.length;
-    const nodeName = markerNode[marker];
-    const { state } = view;
-    const hasMarker = (a: number, b: number) =>
-        a >= 0 && b <= state.doc.length && b - a >= len * 2 && state.sliceDoc(a, a + len) === marker && state.sliceDoc(b - len, b) === marker;
-    const isStarPair = (a: number, b: number, inner: boolean) =>
-        marker === '*' &&
-        (inner
-            ? state.sliceDoc(a + 1, a + 2) === '*' || state.sliceDoc(b - 2, b - 1) === '*'
-            : (a > 0 && state.sliceDoc(a - 1, a) === '*') || state.sliceDoc(b, b + 1) === '*');
+  const len = marker.length;
+  const nodeName = markerNode[marker];
+  const { state } = view;
+  const hasMarker = (a: number, b: number) =>
+    a >= 0 && b <= state.doc.length && b - a >= len * 2 && state.sliceDoc(a, a + len) === marker && state.sliceDoc(b - len, b) === marker;
+  const isStarPair = (a: number, b: number, inner: boolean) =>
+    marker === '*' &&
+    (inner
+      ? state.sliceDoc(a + 1, a + 2) === '*' || state.sliceDoc(b - 2, b - 1) === '*'
+      : (a > 0 && state.sliceDoc(a - 1, a) === '*') || state.sliceDoc(b, b + 1) === '*');
 
-    view.dispatch(
-        state.changeByRange(({ from, to }) => {
-            const node = nodeName ? findEnclosingNode(state, from, to, nodeName) : null;
-            const span =
-                node && hasMarker(node.from, node.to)
-                    ? node
-                    : hasMarker(from - len, to + len) && !isStarPair(from - len, to + len, false)
-                      ? { from: from - len, to: to + len }
-                      : hasMarker(from, to) && !isStarPair(from, to, true)
-                        ? { from, to }
-                        : null;
+  view.dispatch(
+    state.changeByRange(({ from, to }) => {
+      const node = nodeName ? findEnclosingNode(state, from, to, nodeName) : null;
+      const span =
+        node && hasMarker(node.from, node.to)
+          ? node
+          : hasMarker(from - len, to + len) && !isStarPair(from - len, to + len, false)
+            ? { from: from - len, to: to + len }
+            : hasMarker(from, to) && !isStarPair(from, to, true)
+              ? { from, to }
+              : null;
 
-            if (span) {
-                return {
-                    changes: [
-                        { from: span.from, to: span.from + len },
-                        { from: span.to - len, to: span.to },
-                    ],
-                    range: EditorSelection.range(span.from, span.to - len * 2),
-                };
-            }
+      if (span) {
+        return {
+          changes: [
+            { from: span.from, to: span.from + len },
+            { from: span.to - len, to: span.to },
+          ],
+          range: EditorSelection.range(span.from, span.to - len * 2),
+        };
+      }
 
-            const target = targetRange(state, from, to);
-            return {
-                changes: [
-                    { from: target.from, insert: marker },
-                    { from: target.to, insert: marker },
-                ],
-                range: EditorSelection.range(target.from + len, target.to + len),
-            };
-        })
-    );
-    return true;
+      const target = targetRange(state, from, to);
+      return {
+        changes: [
+          { from: target.from, insert: marker },
+          { from: target.to, insert: marker },
+        ],
+        range: EditorSelection.range(target.from + len, target.to + len),
+      };
+    })
+  );
+  return true;
 };
 
 const replaceLinePrefix = (view: EditorView, matchLen: number, insert: string) => {
-    const line = view.state.doc.lineAt(view.state.selection.main.head);
-    const set = view.state.changes({ from: line.from, to: line.from + matchLen, insert });
-    view.dispatch({ changes: set, selection: view.state.selection.map(set, 1) });
-    return true;
+  const line = view.state.doc.lineAt(view.state.selection.main.head);
+  const set = view.state.changes({ from: line.from, to: line.from + matchLen, insert });
+  view.dispatch({ changes: set, selection: view.state.selection.map(set, 1) });
+  return true;
 };
 
 const linePrefix = (re: RegExp, add: string) => (view: EditorView) => {
-    const { text } = view.state.doc.lineAt(view.state.selection.main.head);
-    const remove = re.test(text);
-    const [prefix = ''] = text.match(remove ? re : blockPrefix) || [];
-    return replaceLinePrefix(view, prefix.length, remove ? '' : add);
+  const { text } = view.state.doc.lineAt(view.state.selection.main.head);
+  const remove = re.test(text);
+  const [prefix = ''] = text.match(remove ? re : blockPrefix) || [];
+  return replaceLinePrefix(view, prefix.length, remove ? '' : add);
 };
 
 const heading = (view: EditorView) => {
-    const { text } = view.state.doc.lineAt(view.state.selection.main.head);
-    const [, hashes = ''] = text.match(/^(#{1,6}) /) || [];
-    const [prefix = ''] = text.match(blockPrefix) || [];
-    return replaceLinePrefix(view, prefix.length, hashes.length < 2 ? '## ' : hashes.length === 2 ? '### ' : '');
+  const { text } = view.state.doc.lineAt(view.state.selection.main.head);
+  const [, hashes = ''] = text.match(/^(#{1,6}) /) || [];
+  const [prefix = ''] = text.match(blockPrefix) || [];
+  return replaceLinePrefix(view, prefix.length, hashes.length < 2 ? '## ' : hashes.length === 2 ? '### ' : '');
 };
 
 /** Applies a link to the main selection. With `hide`, an empty `url` on a new link is a no-op and on an existing one removes it. */
 const applyLink = (view: EditorView, rawUrl: string, hide: boolean) => {
-    const { state } = view;
-    if (state.readOnly) return;
-    const url = escapeMdUrl(rawUrl);
-    const { from, to } = state.selection.main;
-    const node = findEnclosingNode(state, from, to, 'Link');
-    const urlNode = hide && url ? node?.getChild('URL') : null;
-    if (urlNode) {
-        view.dispatch({ changes: { from: urlNode.from, to: urlNode.to, insert: url } });
-    } else if (node) {
-        const raw = state.sliceDoc(node.from, node.to);
-        const text = /^\[([\s\S]*?)\]\([\s\S]*\)$/.exec(raw)?.[1] ?? raw;
-        view.dispatch({
-            changes: { from: node.from, to: node.to, insert: text },
-            selection: EditorSelection.range(node.from, node.from + text.length),
-        });
-    } else if (!hide || url) {
-        const target = targetRange(state, from, to);
-        const hasWord = target.to > target.from;
-        const text = hasWord ? state.sliceDoc(target.from, target.to) : 'link';
-        const urlStart = target.from + text.length + 3;
-        view.dispatch({
-            changes: { from: target.from, to: target.to, insert: `[${text}](${url})` },
-            selection: hide
-                ? EditorSelection.range(target.from + 1, target.from + 1 + text.length)
-                : hasWord
-                  ? EditorSelection.range(urlStart, urlStart + url.length)
-                  : EditorSelection.range(target.from + 1, target.from + 5),
-        });
-    }
+  const { state } = view;
+  if (state.readOnly) return;
+  const url = escapeMdUrl(rawUrl);
+  const { from, to } = state.selection.main;
+  const node = findEnclosingNode(state, from, to, 'Link');
+  const urlNode = node?.getChild('URL');
+  const close = node?.getChildren('LinkMark')[1]; // the `]` after the link text
+  if (node && hide && url) {
+    // Reference-style (`[text]`) or empty (`[text]()`) links become inline links.
+    const changes = urlNode
+      ? { from: urlNode.from, to: urlNode.to, insert: url }
+      : { from: close?.to ?? node.to, to: node.to, insert: `(${url})` };
+    view.dispatch({ changes });
+  } else if (node) {
+    const text = state.sliceDoc(node.from + 1, close?.from ?? node.to);
+    view.dispatch({
+      changes: { from: node.from, to: node.to, insert: text },
+      selection: EditorSelection.range(node.from, node.from + text.length),
+    });
+  } else if (!hide || url) {
+    const target = targetRange(state, from, to);
+    const hasWord = target.to > target.from;
+    const text = hasWord ? state.sliceDoc(target.from, target.to) : 'link';
+    const urlStart = target.from + text.length + 3;
+    view.dispatch({
+      changes: { from: target.from, to: target.to, insert: `[${text}](${url})` },
+      selection: hide
+        ? EditorSelection.range(target.from + 1, target.from + 1 + text.length)
+        : hasWord
+          ? EditorSelection.range(urlStart, urlStart + url.length)
+          : EditorSelection.range(target.from + 1, target.from + 5),
+    });
+  }
 };
 
 const link = (view: EditorView) => {
-    if (view.state.facet(marksMode) !== 'hide') {
-        applyLink(view, 'https://', false);
-        return true;
-    }
-    const { state } = view;
-    const { from, to } = state.selection.main;
-    const urlNode = findEnclosingNode(state, from, to, 'Link')?.getChild('URL');
-    const current = urlNode ? state.sliceDoc(urlNode.from, urlNode.to) : 'https://';
-    // `apply(null)` cancels; an empty string removes an existing link. Safe to call asynchronously.
-    const apply = (input: string | null) => {
-        if (input !== null) applyLink(view, input.trim(), true);
-    };
-    if (emit(state.facet(markAreaHost) ?? view.dom, 'ma-link-prompt', { url: current, exists: !!urlNode, apply })) {
-        const s = state.facet(strings);
-        apply(prompt(urlNode ? s.linkPromptRemove : s.linkPrompt, current));
-    }
+  if (view.state.facet(marksMode) !== 'hide') {
+    applyLink(view, 'https://', false);
     return true;
+  }
+  const { state } = view;
+  const { from, to } = state.selection.main;
+  const node = findEnclosingNode(state, from, to, 'Link');
+  const urlNode = node?.getChild('URL');
+  const current = urlNode ? state.sliceDoc(urlNode.from, urlNode.to) : 'https://';
+  // `apply(null)` cancels; an empty string removes an existing link. Safe to call asynchronously.
+  const apply = (input: string | null) => {
+    if (input !== null) applyLink(view, input.trim(), true);
+  };
+  if (emit(state.facet(markAreaHost) ?? view.dom, 'ma-link-prompt', { url: current, exists: !!node, apply })) {
+    const s = state.facet(strings);
+    apply(prompt(node ? s.linkPromptRemove : s.linkPrompt, current));
+  }
+  return true;
 };
 
 /** Inserts `text` as its own paragraph at the cursor line; `select` maps the text start to the new selection (default: cursor after it). */
 export const insertParagraph = (view: EditorView, text: string, select?: (from: number) => SelectionRange) => {
-    const { state } = view;
-    const line = state.doc.lineAt(state.selection.main.head);
-    const filled = !!line.text.trim();
-    const prefix = filled ? '\n\n' : line.number > 1 && state.doc.line(line.number - 1).text.trim() ? '\n' : '';
-    const suffix = line.to < state.doc.length && state.doc.lineAt(line.to + 1).text.trim() ? '\n' : '';
-    const pos = filled ? line.to : line.from;
-    const from = pos + prefix.length;
-    view.dispatch({
-        changes: { from: pos, insert: prefix + text + suffix },
-        selection: select?.(from) ?? EditorSelection.cursor(from + text.length),
-        scrollIntoView: true,
-    });
-    return true;
+  const { state } = view;
+  const line = state.doc.lineAt(state.selection.main.head);
+  const filled = !!line.text.trim();
+  const prefix = filled ? '\n\n' : line.number > 1 && state.doc.line(line.number - 1).text.trim() ? '\n' : '';
+  const suffix = line.to < state.doc.length && state.doc.lineAt(line.to + 1).text.trim() ? '\n' : '';
+  const pos = filled ? line.to : line.from;
+  const from = pos + prefix.length;
+  view.dispatch({
+    changes: { from: pos, insert: prefix + text + suffix },
+    selection: select?.(from) ?? EditorSelection.cursor(from + text.length),
+    scrollIntoView: true,
+  });
+  return true;
 };
 
 const pickUpload = (kind: UploadKind) => (view: EditorView) => {
-    view.state.facet(markAreaHost)?.pickFiles(kind);
-    return true;
+  view.state.facet(markAreaHost)?.pickFiles(kind);
+  return true;
 };
 
-export const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 export const mod = mac ? '⌘' : 'Ctrl+';
-export const shift = mac ? '⇧' : 'Shift+';
+const shift = mac ? '⇧' : 'Shift+';
 export const alt = mac ? '⌥' : 'Alt+';
 
 export const icon = (d: string) =>
-    `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="${d}"/></svg>`;
+  `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="${d}"/></svg>`;
 
 export const actions: EditorAction[] = [
-    { id: 'undo', run: undo, hint: mod + 'Z', html: icon('M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3') },
-    { id: 'redo', run: redo, hint: mod + shift + 'Z', html: icon('m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3') },
-    { id: 'bold', run: wrap('**'), key: 'Mod-b', hint: mod + 'B', html: icon('M7 4.5h5.5a3.5 3.5 0 0 1 0 7H7m0-7v15m0-8h6.5a3.75 3.75 0 0 1 0 8H7') },
-    { id: 'italic', run: wrap('*'), key: 'Mod-i', hint: mod + 'I', html: icon('M10 4.5h8M6 19.5h8m.5-15-5 15') },
-    {
-        id: 'strike',
-        run: wrap('~~'),
-        key: 'Mod-Shift-x',
-        hint: mod + shift + 'X',
-        html: icon('M16.5 7.5C16 6 14.2 5 12 5c-2.5 0-4.2 1.2-4.2 3 0 1.5 1 2.3 3 3M3.5 12h17M16.5 15c.2 3-2 4-4.5 4s-4.5-1-4.7-3')
-    },
-    { id: 'heading', run: heading, key: 'Mod-Alt-h', hint: mod + alt + 'H', html: icon('M4.5 4.5v15m10-15v15m-10-7.5h10M18 10l2.5-1.5v11') },
-    {
-        id: 'bullet',
-        run: linePrefix(/^[-*+] /, '- '),
-        key: 'Mod-Shift-8',
-        hint: mod + shift + '8',
-        html: icon(
-            'M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z'
-        ),
-    },
-    {
-        id: 'ordered',
-        run: linePrefix(/^\d+\. /, '1. '),
-        key: 'Mod-Shift-7',
-        hint: mod + shift + '7',
-        html: icon(
-            'M8.242 5.992h12m-12 6.003H20.24m-12 5.999h12M4.117 7.495v-3.75H2.99m1.125 3.75H2.99m1.125 0H5.24m-1.92 2.577a1.125 1.125 0 1 1 1.591 1.59l-1.83 1.83h2.16M2.99 15.745h1.125a1.125 1.125 0 0 1 0 2.25H3.74m0-.002h.375a1.125 1.125 0 0 1 0 2.25H2.99'
-        ),
-    },
-    {
-        id: 'quote',
-        run: linePrefix(/^> ?/, '> '),
-        key: 'Mod-Shift-9',
-        hint: mod + shift + '9',
-        html: icon('M4.5 12.5V9a4 4 0 0 1 4-4m-4 7.5h4v6h-4v-6Zm10 0V9a4 4 0 0 1 4-4m-4 7.5h4v6h-4v-6Z')
-    },
-    {
-        id: 'code',
-        run: wrap('`'),
-        key: 'Mod-e',
-        hint: mod + 'E',
-        html: icon('M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5'),
-    },
-    {
-        id: 'link',
-        run: link,
-        key: 'Mod-k',
-        hint: mod + 'K',
-        html: icon(
-            'M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244'
-        ),
-    },
-    {
-        id: 'image',
-        run: pickUpload('image'),
-        key: 'Mod-Shift-i',
-        hint: mod + shift + 'I',
-        enabled: (host) => host.uploads,
-        html: icon(
-            'm2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z'
-        ),
-    },
-    {
-        id: 'file',
-        run: pickUpload('file'),
-        key: 'Mod-Shift-u',
-        hint: mod + shift + 'U',
-        enabled: (host) => host.uploads,
-        html: icon(
-            'm18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13'
-        ),
-    },
+  { id: 'undo', run: undo, hint: mod + 'Z', html: icon('M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3') },
+  { id: 'redo', run: redo, hint: mod + shift + 'Z', html: icon('m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3') },
+  { id: 'bold', run: wrap('**'), key: 'Mod-b', hint: mod + 'B', html: icon('M7 4.5h5.5a3.5 3.5 0 0 1 0 7H7m0-7v15m0-8h6.5a3.75 3.75 0 0 1 0 8H7') },
+  { id: 'italic', run: wrap('*'), key: 'Mod-i', hint: mod + 'I', html: icon('M10 4.5h8M6 19.5h8m.5-15-5 15') },
+  {
+    id: 'strike',
+    run: wrap('~~'),
+    key: 'Mod-Shift-x',
+    hint: mod + shift + 'X',
+    html: icon('M16.5 7.5C16 6 14.2 5 12 5c-2.5 0-4.2 1.2-4.2 3 0 1.5 1 2.3 3 3M3.5 12h17M16.5 15c.2 3-2 4-4.5 4s-4.5-1-4.7-3')
+  },
+  { id: 'heading', run: heading, key: 'Mod-Alt-h', hint: mod + alt + 'H', html: icon('M4.5 4.5v15m10-15v15m-10-7.5h10M18 10l2.5-1.5v11') },
+  {
+    id: 'bullet',
+    run: linePrefix(/^[-*+] /, '- '),
+    key: 'Mod-Shift-8',
+    hint: mod + shift + '8',
+    html: icon(
+      'M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z'
+    ),
+  },
+  {
+    id: 'ordered',
+    run: linePrefix(/^\d+\. /, '1. '),
+    key: 'Mod-Shift-7',
+    hint: mod + shift + '7',
+    html: icon(
+      'M8.242 5.992h12m-12 6.003H20.24m-12 5.999h12M4.117 7.495v-3.75H2.99m1.125 3.75H2.99m1.125 0H5.24m-1.92 2.577a1.125 1.125 0 1 1 1.591 1.59l-1.83 1.83h2.16M2.99 15.745h1.125a1.125 1.125 0 0 1 0 2.25H3.74m0-.002h.375a1.125 1.125 0 0 1 0 2.25H2.99'
+    ),
+  },
+  {
+    id: 'quote',
+    run: linePrefix(/^> ?/, '> '),
+    key: 'Mod-Shift-9',
+    hint: mod + shift + '9',
+    html: icon('M4.5 12.5V9a4 4 0 0 1 4-4m-4 7.5h4v6h-4v-6Zm10 0V9a4 4 0 0 1 4-4m-4 7.5h4v6h-4v-6Z')
+  },
+  {
+    id: 'code',
+    run: wrap('`'),
+    key: 'Mod-e',
+    hint: mod + 'E',
+    html: icon('M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5'),
+  },
+  {
+    id: 'link',
+    run: link,
+    key: 'Mod-k',
+    hint: mod + 'K',
+    html: icon(
+      'M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244'
+    ),
+  },
+  {
+    id: 'image',
+    run: pickUpload('image'),
+    key: 'Mod-Shift-i',
+    hint: mod + shift + 'I',
+    enabled: (host) => host.uploads,
+    html: icon(
+      'm2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z'
+    ),
+  },
+  {
+    id: 'file',
+    run: pickUpload('file'),
+    key: 'Mod-Shift-u',
+    hint: mod + shift + 'U',
+    enabled: (host) => host.uploads,
+    html: icon(
+      'm18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13'
+    ),
+  },
 ];
 
 export const actionMap = new Map(actions.map((a) => [a.id, a]));
 
 /** Marks display modes in cycle order: code only, code on enter, WYSIWYG only. */
 export const markModes: Record<MarksMode, { label: 'modeShow' | 'modeAuto' | 'modeHide'; html: string }> = {
-    show: { label: 'modeShow', html: icon('M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25') },
-    auto: { label: 'modeAuto', html: icon('M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5') },
-    hide: { label: 'modeHide', html: icon('M2.036 12.322a1 1 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5s8.573 3.007 9.963 7.178a1 1 0 0 1 0 .639C20.577 16.49 16.64 19.5 12 19.5s-8.573-3.007-9.963-7.178ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z') },
+  show: { label: 'modeShow', html: icon('M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25') },
+  auto: { label: 'modeAuto', html: icon('M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5') },
+  hide: { label: 'modeHide', html: icon('M2.036 12.322a1 1 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5s8.573 3.007 9.963 7.178a1 1 0 0 1 0 .639C20.577 16.49 16.64 19.5 12 19.5s-8.573-3.007-9.963-7.178ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z') },
 };
 
 /** Cycles marks mode. Opt-in: add `mode` to the `toolbar` attribute. */
 export const modeAction: EditorAction = {
-    id: 'mode',
-    label: 'Toggle markup mode',
-    html: markModes.auto.html,
-    run: (view) => {
-        const host = view.state.facet(markAreaHost);
-        if (!host) return false;
-        host.marks = ({ show: 'auto', auto: 'hide', hide: 'show' } as const)[host.marks];
-        return true;
-    },
+  id: 'mode',
+  label: 'Toggle markup mode',
+  html: markModes.auto.html,
+  run: (view) => {
+    const host = view.state.facet(markAreaHost);
+    if (!host) return false;
+    host.marks = ({ show: 'auto', auto: 'hide', hide: 'show' } as const)[host.marks];
+    return true;
+  },
 };

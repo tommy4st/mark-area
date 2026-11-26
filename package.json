@@ -16,7 +16,7 @@
     "build:types": "bunx tsc -p tsconfig.build.json",
     "build": "bun run clean && bun run build:bundle && bun run build:types",
     "watch": "bun build standalone.ts --outfile out/standalone.js --target browser --watch",
-    "typecheck": "bunx tsc --noEmit",
+    "typecheck": "bunx tsc --noEmit && bunx tsc --noEmit -p tsconfig.test.json",
     "test": "bun run test:unit && bun run test:e2e",
     "check": "bun run typecheck && bun run build && bun run test:unit && bun run size",
     "clean": "rm -rf dist",
@@ -24,6 +24,7 @@
     "build:standalone": "bun build standalone.ts --outfile dist/standalone.js --target browser --minify",
     "test:unit": "bun test tests/unit",
     "test:e2e": "bunx playwright test",
+    "test:e2e:ci": "bunx playwright install --with-deps chromium && bunx playwright test",
     "size": "bun scripts/size.ts"
   },
   "devDependencies": {

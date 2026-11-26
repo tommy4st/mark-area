@@ -1,4 +1,4 @@
-image: oven/bun:1.4.2
+image: oven/bun:latest
 
 stages:
   - check
@@ -11,6 +11,7 @@ check:
   script:
     - bun install --frozen-lockfile
     - bun run check
+    - bun run test:e2e:ci
 
 # Tags are created by scripts/release.sh (devbox run release).
 publish:
@@ -22,4 +23,5 @@ publish:
   script:
     - bun install --frozen-lockfile
     - bun run check
+    - bun run test:e2e:ci
     - bun publish --registry "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/npm/"

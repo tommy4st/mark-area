@@ -10,6 +10,6 @@ const kb = (n: number) => `${(n / 1024).toFixed(1)} KB`;
 
 console.log(`define.ts bundle: ${kb(code.length)} minified, ${kb(size)} gzip (budget ${kb(BUDGET)})`);
 if (size > BUDGET) {
-    console.error('Bundle exceeds the size budget.');
-    process.exit(1);
+  console.error('Bundle exceeds the size budget.');
+  process.exit(1);
 }

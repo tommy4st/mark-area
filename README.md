@@ -133,6 +133,7 @@ Icon size: set `--ma-icon-size` (default `1rem`).
 
 ## Formatting & Keyboard Shortcuts
 
+- **Toolbar**: one Tab stop before the text (it remembers the last focused button); Arrow keys, Home and End move between buttons.
 - **Inline formats** (`bold`, `italic`, `strike`, `code`, `link`):
   - When the cursor is on/near an unformatted word with no selection, selects the closest word on the line and applies the format.
   - When already inside the formatted element, selects the whole element and removes the formatting markers.
@@ -195,6 +196,7 @@ editor.plugins = [tableWysiwygPlugin()];
 Files can be uploaded via the **toolbar buttons**, **keyboard shortcuts**, **drag-and-drop**, or **clipboard paste**.
 - Images are embedded as `![filename](url)` and rendered inline in live preview.
 - Other files are inserted as `[filename](url)` download links (`Ctrl/Cmd+Click` opens or downloads).
+- Pastes that carry both plain text and HTML (e.g. cells from Excel or Word, which add a picture of the selection) paste the text instead of uploading.
 
 ### Enabling Uploads
 Uploads are off by default: no image/file buttons, shortcuts, drop, or paste handling. Add the `uploads` attribute (or set `editor.uploads = true`) to enable them. `uploads="off"` disables them.
@@ -366,7 +368,7 @@ All events bubble and are `composed: true` (cross Shadow DOM boundaries). Cancel
 | Event | Cancelable | `event.detail` | Description |
 | --- | --- | --- | --- |
 | `input` | No | — (plain `Event`) | Fired whenever the document text changes. Read `event.target.value`. Works with Alpine `x-model`. |
-| `change` | No | — (plain `Event`) | Fired when the editor loses focus. Works with `x-model.lazy`. |
+| `change` | No | — (plain `Event`) | Fired like a native `<textarea>`: when the editor loses focus (or a card field/table cell commits) and the value differs from the last `change` or programmatic assignment. Works with `x-model.lazy`. |
 | `ma-action` | **Yes** | `{ action: ActionId, view: EditorView }` | Fired before running any toolbar/shortcut command (`bold`, `link`, `image`, etc.). Call `preventDefault()` to handle it yourself. |
 | `ma-link-prompt` | **Yes** | `{ url: string, exists: boolean, apply: (url: string \| null) => void }` | Fired by the `link` action when `hide-marks` is set. Call `preventDefault()` to show your own UI, then call `apply(url)` (empty string removes an existing link, `null` cancels). Default is `window.prompt`. |
 | `ma-upload` | **Yes** | `{ file: File, kind: 'image' \| 'file', result?: Promise<UploadResult> \| UploadResult }` | Fired per file before upload. Set `e.detail.result = uploadFn(file)` to supply a custom URL via event listener, or `preventDefault()` to skip the file. |

@@ -1,37 +1,35 @@
 # dependencies (bun install)
-node_modules
+node_modules/
 
-# output
-out
+# build output (dist/ is committed only on release tags, see scripts/release.sh)
+/dist/
+/out/
 *.tgz
-
-# code coverage
-coverage
-*.lcov
-
-# logs
-logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
-
-# dotenv environment variable files
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
-
-# caches
-.eslintcache
-.cache
 *.tsbuildinfo
 
-# IntelliJ based IDEs
-.idea
-
-# Finder (MacOS) folder config
-.DS_Store
+# tests (Playwright) and coverage
 /test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/coverage/
+*.lcov
 
-# build output (committed only on release tags, see scripts/release.sh)
-dist
+# logs and caches
+logs/
+*.log
+.cache/
+
+# environment (direnv, devbox, dotenv)
+.direnv/
+.devbox/
+.env
+.env*.local
+
+# editors and OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*~
+.DS_Store

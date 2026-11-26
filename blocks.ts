@@ -9,15 +9,15 @@ export { blockAt, parseAttrs, safeImageUrl, safeUrl } from './src/blocks/core.ts
 export { vcardBlock, faqBlock };
 
 export interface CustomBlocksOptions {
-    blocks?: BlockRenderer[];
-    /** Adds an insert action per block type (default true). */
-    toolbar?: boolean;
+  blocks?: BlockRenderer[];
+  /** Adds an insert action per block type (default true). */
+  toolbar?: boolean;
 }
 
 /** Opt-in `:::name{attrs}` … `:::` containers rendered as cards while the cursor is outside. */
 export const customBlocksPlugin = ({ blocks = [vcardBlock, faqBlock], toolbar = true }: CustomBlocksOptions = {}): MarkPlugin => ({
-    markdown: customBlockConfig,
-    extension: customBlockWidgets(blocks),
-    actions: toolbar ? blocks.flatMap((b) => (b.action ? [b.action] : [])) : [],
-    styles: blockStyles + blocks.map((b) => b.styles ?? '').join(''),
+  markdown: customBlockConfig,
+  extension: customBlockWidgets(blocks),
+  actions: toolbar ? blocks.flatMap((b) => (b.action ? [b.action] : [])) : [],
+  styles: blockStyles + blocks.map((b) => b.styles ?? '').join(''),
 });

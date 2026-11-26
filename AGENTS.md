@@ -14,10 +14,11 @@
 ## Commands
 - `devbox run dev` (or `bun run dev`) — Start the dev server for `index.html` (it imports `define.ts` directly).
 - `devbox run check` (or `bun run check`) — Run `tsc --noEmit`, build `dist/`, run unit tests, and check the bundle size budget (`scripts/size.ts`, 120 KB gzip for `define.ts` with dependencies). Always run this after modifying source files.
-- `devbox run typecheck` (or `bun run typecheck`) — Type-check without emitting files.
+- `devbox run typecheck` (or `bun run typecheck`) — Type-check without emitting files: browser sources (`tsconfig.json`), then tests and scripts with Bun types (`tsconfig.test.json`). E2E specs load `dist/standalone.js`; CI runs them with `bun run test:e2e:ci`.
 - `devbox run build` (or `bun run build`) — Build the split library and the standalone bundle.
 
 ## Architecture & Conventions
+- **Formatting**: Use 2-space indentation (`indent_style = space`, `indent_size = 2`), LF line endings, and a final newline across all files (configured in `.editorconfig`).
 - **Keep it lean**: Keep modules small and focused, without adding unnecessary dependencies or abstraction layers. Never call `markdown()` from `@codemirror/lang-markdown` (it bundles HTML/CSS/JS grammars); `src/mark-area.ts` builds the language from `commonmarkLanguage` and imports only the keymap commands and `pasteURLAsLink`. The editor uses `standardKeymap`, not `defaultKeymap`.
 - **Form fallback**: A child `<textarea>` is adopted on first connect (`#adoptTextarea()`): attributes the host lacks (except `class`) are copied, its value becomes the document, and it is removed so the field is not submitted twice.
 - **Shadow DOM & Styling**:

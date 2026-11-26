@@ -14,6 +14,8 @@ cd "$(dirname "$0")/.."
 bun run check
 bun pm version "${1:-patch}" --no-git-tag-version
 tag="v$(bun -p "require('./package.json').version")"
+# Point the README install and CDN snippets at the new tag.
+sed -i.bak -E "s#(mark-area[@\#]|releases/download/)v[0-9]+\.[0-9]+\.[0-9]+#\1$tag#g" README.md && rm README.md.bak
 git commit -qam "$tag"
 
 git add -f dist
@@ -22,6 +24,6 @@ git rm -r -q --cached dist
 git tag -a "$tag" -m "$tag" "$(git commit-tree "$tree" -p HEAD -m "$tag (with dist)")"
 
 for remote in ${RELEASE_REMOTES:-$(git remote)}; do
-    git push "$remote" HEAD "$tag"
+  git push "$remote" HEAD "$tag"
 done
 echo "Released $tag"

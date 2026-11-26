@@ -20,12 +20,13 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.2
+          bun-version: latest
 
       - name: Install dependencies & build
         run: |
           bun install --frozen-lockfile
           bun run check
+          bun run test:e2e:ci
 
       - name: Create GitHub Release
         env:
