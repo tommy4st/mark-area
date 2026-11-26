@@ -1,6 +1,6 @@
 name: CI
 
-# Runs on the `buildah` runner, which has no Node.js: no JS actions (checkout, setup-bun), plain shell steps only.
+# Runs in `oven/bun` (runner label `bun`, Debian, root): plain shell steps, no JS actions; Playwright installs Chromium with apt.
 on:
   push:
     branches:
@@ -9,19 +9,19 @@ on:
 
 jobs:
   check:
-    runs-on: buildah
+    runs-on: bun
     steps:
+      - name: Install git and curl
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends git curl ca-certificates
+
       - name: Check out repository
         run: |
           SERVER_HOST=$(echo "${{ github.server_url }}" | sed -e 's|^https\?://||')
           git init -q .
           git fetch -q --depth=1 "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@$SERVER_HOST/${{ github.repository }}.git" "${{ github.ref }}"
           git checkout -q FETCH_HEAD
-
-      - name: Install Bun
-        run: |
-          curl -fsSL https://bun.sh/install | bash
-          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
 
       - name: Typecheck, build and unit tests
         run: |
