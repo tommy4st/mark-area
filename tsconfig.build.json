@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "files": [
+    "index.ts",
+    "define.ts",
+    "plugin.ts",
+    "tables.ts",
+    "blocks.ts",
+    "src/table/inline.ts",
+    "src/table/preview.ts",
+    "src/table/wysiwyg.ts"
+  ],
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": ".",
+    "outDir": "dist"
+  }
+}

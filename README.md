@@ -2,6 +2,9 @@
 
 A lean, customizable Markdown editor Web Component built on CodeMirror 6 with live preview, Shadow DOM styling hooks, native HTML form participation (`ElementInternals`), image/file uploads with interactive image resizing, and opt-in GFM table editing.
 
+- **Small**: about 110 KB gzip for `@tommy4st/mark-area/define` including CodeMirror (`bun run size` checks a 120 KB budget). The Markdown language is built from `@lezer/markdown` directly, without the HTML, CSS and JavaScript grammars that `markdown()` from `@codemirror/lang-markdown` bundles.
+- **Lossless**: the value is exactly the Markdown the user typed. Rich-text editors such as Tiptap or Milkdown parse Markdown into a document model and serialize it back, so `*`/`_`, list markers or escapes change on the first save and unsupported syntax can be dropped.
+
 [![Live Demo](https://img.shields.io/badge/demo-live%20showcase-brightgreen)](https://tommy4st.github.io/mark-area/)
 
 ## Installation & Usage
@@ -79,6 +82,18 @@ Write **bold**, *italic*, ~~strikethrough~~, `code`, or [links](https://example.
 </form>
 ```
 
+### Progressive enhancement with a `<textarea>`
+
+Wrap a native `<textarea>` so the form also works before (or without) JavaScript:
+
+```html
+<mark-area toolbar="bold italic link">
+  <textarea name="content" rows="6" required>## Hello</textarea>
+</mark-area>
+```
+
+When `<mark-area>` upgrades, it copies the textarea's attributes it does not have itself (except `class`), takes its value, and removes it, so the field is submitted once. Load the script as a module (or after the markup) so the textarea is parsed before the element upgrades.
+
 Or import the package in TypeScript/JavaScript:
 
 ```ts
@@ -91,7 +106,7 @@ import { MarkArea, defineMarkArea } from '@tommy4st/mark-area';
 
 | Attribute | Property | Type | Default | Description |
 | --- | --- | --- | --- | --- |
-| `value` | `value` | `string` | `""` | Current Markdown document content. Initial content can also be placed as text inside `<mark-area>...</mark-area>`. |
+| `value` | `value` | `string` | `""` | Current Markdown document content. Initial content can also be placed as text inside `<mark-area>...</mark-area>` or in a child `<textarea>` (the attribute wins). |
 | `name` | `name` | `string` | `""` | Form field name for `FormData` submission. |
 | `placeholder` | `placeholder` | `string` | `""` | Placeholder shown when the editor is empty. |
 | `rows` | `rows` | `number` | `4` | Minimum editor height in lines (`calc(var(--ma-rows, 4) * 1.5em)`). |
@@ -109,7 +124,8 @@ import { MarkArea, defineMarkArea } from '@tommy4st/mark-area';
 | `csrf-token` | `csrfToken` | `string` | `<meta name="csrf-token">` | Sent as the `X-CSRF-Token` header with `upload-url` requests. |
 | `uploads` | `uploads` | `boolean` | `false` | Enables image/file actions, shortcuts, drop and paste. `uploads="off"` disables. |
 | `toolbar` | `toolbar` | `string[]` | all actions | Space-separated action ids, in order, e.g. `toolbar="bold italic link"`. |
-| — | `labels` | `Record<id, { label?, title? }>` | English ids | Translates button `aria-label` (`label`) and tooltip (`title`) by action id. |
+| — | — | — | — | Add `mode` to `toolbar` (e.g. `toolbar="bold italic mode"`) for a button cycling Code only (`show-marks`) → Code on enter (default) → WYSIWYG only (`hide-marks`). Not in the default toolbar. |
+| — | `labels` | `Record<id, { label?, title? }>` | English ids | Translates button `aria-label` (`label`) and tooltip (`title`) by action id. Overrides an action's default `label`. |
 
 Icon size: set `--ma-icon-size` (default `1rem`).
 
@@ -141,6 +157,19 @@ Icon size: set `--ma-icon-size` (default `1rem`).
 | `table` | Insert table (requires a table plugin) | `⌘⌥T` / `Ctrl+Alt+T` |
 
 Trigger any action programmatically via `editor.exec('bold')`.
+
+Besides these, CodeMirror's `standardKeymap` (cursor movement, selection, deletion) and history keys apply. `Enter` continues list and quote markup, `Backspace` at a marker removes it, and pasting a URL over a selection makes a link. The larger `defaultKeymap` (line moves, comment toggling, bracket selection) is left out to keep the bundle small; add it via `editor.plugins = [keymap.of(defaultKeymap)]` if needed.
+
+---
+
+## Custom blocks (opt-in)
+
+`customBlocksPlugin({ blocks?, toolbar? })` from `@tommy4st/mark-area/blocks` renders `:::name{attrs}` … `:::` containers as cards (built-in `vcard` and `faq`) while the cursor is outside; raw source shows when inside. Card fields are editable in place (vCard name, title, org, email, phone, url; FAQ question; and the Markdown body, shown raw while focused); edits rewrite the `:::` block source. Clearing a field removes its attribute; focusing and leaving a field never changes the value. Ctrl/Cmd+click (or Ctrl/Cmd+Enter in a link field) opens a link. Hover a card and press the code-icon button (`part="source-toggle"`, always visible on touch devices) to reveal its raw source. Fields are labelled textboxes (`role="textbox"`, `aria-label`) with a `:focus-visible` outline (`--ma-focus-color`). Indented fences render as cards; fences inside blockquotes or lists stay raw. With the `uploads` attribute, click or drop an image on the round vCard slot (`::part(photo)`) to upload a photo through `editor.upload` / `upload-url` (`ma-upload` events fire as usual); the URL lands in `photo="…"`. Renderers opt in with `ctx.editable(node, attrKey)` and `ctx.imageUpload(node, attrKey)`; `editor.uploadImage(file)` returns the uploaded URL. Add your own `BlockRenderer` (`{ name, render(attrs, body, ctx), action?, styles? }`). Style with `--ma-card-bg`, `--ma-card-border`, `--ma-card-radius`, `--ma-faq-marker`, `--ma-edit-hover` (hover highlight of editable fields) and `::part(card)`. Syntax, HTML output and server notes: [docs/custom-blocks.md](docs/custom-blocks.md).
+
+```ts
+import { customBlocksPlugin } from '@tommy4st/mark-area/blocks';
+editor.plugins = [customBlocksPlugin()];
+```
 
 ---
 
@@ -357,7 +386,8 @@ devbox run dev        # Watch-build dist/ and serve index.html demo page with ho
 devbox run build      # Build split ESM library, dist/standalone.js, and .d.ts files
 devbox run watch      # Watch and rebuild out/standalone.js (gitignored)
 devbox run typecheck  # Run TypeScript type checker (tsc --noEmit)
-devbox run check      # Run typecheck + build
+devbox run check      # Run typecheck + build + unit tests + bundle size budget (bun run size)
+devbox run test       # Run unit and Playwright e2e tests (build first)
 devbox run clean      # Remove dist/
 ```
 

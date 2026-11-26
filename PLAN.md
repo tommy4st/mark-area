@@ -48,46 +48,46 @@ Deleted: none.
 ## Phase-by-Phase Milestones
 
 ### Phase 1: Syntax spec
-- [ ] Write `docs/custom-blocks.md`. Define the opening fence as `^:{3,}[a-z][\w-]*` plus an optional `{…}`, and the closing fence as a matching-or-longer `:::` line.
-- [ ] Define the attribute grammar: `key="value"`, `key='value'`, `key=bare`, a bare boolean `key`, `#id`, and `.class`. Specify escaping and unknown-key handling.
-- [ ] Define the canonical HTML for each type:
+- [x] Write `docs/custom-blocks.md`. Define the opening fence as `^:{3,}[a-z][\w-]*` plus an optional `{…}`, and the closing fence as a matching-or-longer `:::` line.
+- [x] Define the attribute grammar: `key="value"`, `key='value'`, `key=bare`, a bare boolean `key`, `#id`, and `.class`. Specify escaping and unknown-key handling.
+- [x] Define the canonical HTML for each type:
   - vcard: `<div class="ma-block ma-vcard" data-block="vcard">` with an `h-card` microformat and `mailto:`/`tel:` links.
   - faq: `<details class="ma-block ma-faq"><summary>…</summary>…</details>`.
-- [ ] Define the fallback for unknown types: `<div class="ma-block" data-block="name">` with the body rendered.
+- [x] Define the fallback for unknown types: `<div class="ma-block" data-block="name">` with the body rendered.
 
 ### Phase 2: Parser (`src/blocks/core.ts`)
-- [ ] Implement a `BlockParser` that matches the opening fence and consumes lines until the closing fence or the end of the document. The body is parsed as child Markdown via `cx.startComposite`, or kept as raw lines if composite is too complex.
-- [ ] Emit `CustomBlock`, `CustomBlockMark` (fences), and `CustomBlockInfo` (the name plus attrs) nodes.
-- [ ] Implement `parseAttrs(info: string): Record<string, string | true>` as a pure function with no DOM use.
-- [ ] Implement `blockAt(state, pos)` via `findEnclosingNode` (the same approach as `tableAt`).
+- [x] Implement a `BlockParser` that matches the opening fence and consumes lines until the closing fence or the end of the document. The body is parsed as child Markdown via `cx.startComposite`, or kept as raw lines if composite is too complex.
+- [x] Emit `CustomBlock`, `CustomBlockMark` (fences), and `CustomBlockInfo` (the name plus attrs) nodes.
+- [x] Implement `parseAttrs(info: string): Record<string, string | true>` as a pure function with no DOM use.
+- [x] Implement `blockAt(state, pos)` via `findEnclosingNode` (the same approach as `tableAt`).
 
 ### Phase 3: Widget and decorations (`src/blocks/widget.ts`)
-- [ ] Define the `BlockRenderer` type: `{ name, render(attrs, body, ctx): HTMLElement, action?, styles? }`.
-- [ ] Add a `StateField<DecorationSet>`. When the cursor is outside a block, apply `Decoration.replace({ widget, block: true })` over the whole block. When the cursor is inside, add only `cm-block-line` line decorations.
-- [ ] Provide `EditorView.atomicRanges` for the replaced ranges.
-- [ ] Render the body with the existing preview or a minimal safe inline renderer. Use `textContent` only and never `innerHTML` with user text.
-- [ ] Clicking the card moves the selection to the block's info line, which reveals the raw source.
-- [ ] Implement `eq()` on the widget (comparing raw text) to avoid DOM churn.
+- [x] Define the `BlockRenderer` type: `{ name, render(attrs, body, ctx): HTMLElement, action?, styles? }`.
+- [x] Add a `StateField<DecorationSet>`. When the cursor is outside a block, apply `Decoration.replace({ widget, block: true })` over the whole block. When the cursor is inside, add only `cm-block-line` line decorations.
+- [x] Provide `EditorView.atomicRanges` for the replaced ranges.
+- [x] Render the body with the existing preview or a minimal safe inline renderer. Use `textContent` only and never `innerHTML` with user text.
+- [x] Clicking the card moves the selection to the block's info line, which reveals the raw source.
+- [x] Implement `eq()` on the widget (comparing raw text) to avoid DOM churn.
 
 ### Phase 4: Built-in blocks
-- [ ] `vcard`: render name, email (`mailto:`), phone (`tel:`), url, org, and title, plus the body as notes. Add an insert action `block-vcard` that inserts a template at the cursor line.
-- [ ] `faq`: render `<details>` with `<summary>` set to the `question` attr. The `open` attr sets the initial state. Toggling in the editor must not mutate the document.
-- [ ] Add styles in each renderer's `styles` string. Use `--ma-card-bg`, `--ma-card-border`, `--ma-card-radius`, and `--ma-faq-marker`, with `color-mix` defaults. Expose `part="card"`.
+- [x] `vcard`: render name, email (`mailto:`), phone (`tel:`), url, org, and title, plus the body as notes. Add an insert action `block-vcard` that inserts a template at the cursor line.
+- [x] `faq`: render `<details>` with `<summary>` set to the `question` attr. The `open` attr sets the initial state. Toggling in the editor must not mutate the document.
+- [x] Add styles in each renderer's `styles` string. Use `--ma-card-bg`, `--ma-card-border`, `--ma-card-radius`, and `--ma-faq-marker`, with `color-mix` defaults. Expose `part="card"`.
 
 ### Phase 5: Plugin and entry points
-- [ ] Add `customBlocksPlugin({ blocks = [vcardBlock, faqBlock], toolbar })` in `blocks.ts`, returning a `MarkPlugin` (`markdown`, `extension`, `actions`, `styles`).
-- [ ] Add the `./blocks` export to `package.json` and `blocks.ts` to `build:lib`, and re-export from `standalone.ts`.
-- [ ] Add samples and the plugin to the `index.html` demo.
+- [x] Add `customBlocksPlugin({ blocks = [vcardBlock, faqBlock], toolbar })` in `blocks.ts`, returning a `MarkPlugin` (`markdown`, `extension`, `actions`, `styles`).
+- [x] Add the `./blocks` export to `package.json` and `blocks.ts` to `build:lib`, and re-export from `standalone.ts`.
+- [x] Add samples and the plugin to the `index.html` demo.
 
 ### Phase 6: Tests and docs
-- [ ] Add `tests/blocks.spec.ts`. Cover:
+- [x] Add `tests/blocks.spec.ts`. Cover:
   - Card renders when the cursor is outside the block.
   - Raw source shows when the cursor is inside.
   - The FAQ toggle leaves `el.value` unchanged.
   - An unclosed fence does not break the editor.
   - Attribute escaping renders as text, not HTML.
   - Form value round-trips unchanged.
-- [ ] Update `README.md` and `AGENTS.md`.
+- [x] Update `README.md` and `AGENTS.md`.
 
 ## Verification & Test Strategy
 - After each phase, run `bun run check` (`tsc --noEmit` and the build). Phase 5 additionally confirms that `dist/blocks.js` and `dist/blocks.d.ts` exist (`ls dist/blocks.*`).

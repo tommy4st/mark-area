@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  check:
+    runs-on: docker
+    steps:
+      - name: Checkout repository
+        uses: https://code.forgejo.org/actions/checkout@v4
+
+      - name: Setup Bun
+        uses: https://github.com/oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Typecheck, build and unit tests
+        run: |
+          bun install --frozen-lockfile
+          bun run check

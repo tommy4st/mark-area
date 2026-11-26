@@ -1,9 +1,10 @@
-import { EditorSelection, type EditorState } from '@codemirror/state';
+import { EditorSelection, type EditorState, type SelectionRange } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import { redo, undo } from '@codemirror/commands';
 import { syntaxTree } from '@codemirror/language';
-import type { EditorAction, SyntaxNode, UploadHandler } from './types.ts';
-import { emit, hostFor } from './utils.ts';
+import type { EditorAction, SyntaxNode } from './types.ts';
+import { markAreaHost, marksMode, strings, type MarksMode, type UploadKind } from './host.ts';
+import { emit, escapeMdUrl } from './utils.ts';
 
 // ---- Formatting commands ----
 
@@ -14,7 +15,9 @@ const markerNode: Record<string, string> = {
     '`': 'InlineCode',
 };
 
-const blockPrefix = /^(?:#{1,6} |(?:[-*+]|\d+\.) |> ?)/;
+const blockPrefixSrc = '(?:#{1,6} |(?:[-*+]|\\d+\\.) |> ?)';
+const blockPrefix = new RegExp(`^${blockPrefixSrc}`);
+const blockPrefixes = new RegExp(`^${blockPrefixSrc}+`);
 
 export function findEnclosingNode(state: EditorState, from: number, to: number, nodeName: string): SyntaxNode | null {
     const tree = syntaxTree(state);
@@ -32,7 +35,7 @@ function targetRange(state: EditorState, from: number, to: number): { from: numb
     if (direct) return direct;
 
     const line = state.doc.lineAt(from);
-    const [prefix = ''] = line.text.match(/^(?:#{1,6} |(?:[-*+]|\d+\.) |> ?)+/) || [];
+    const [prefix = ''] = line.text.match(blockPrefixes) || [];
     const start = line.from + prefix.length;
     let best: { from: number; to: number; dist: number } | null = null;
 
@@ -50,7 +53,12 @@ const wrap = (marker: string) => (view: EditorView) => {
     const nodeName = markerNode[marker];
     const { state } = view;
     const hasMarker = (a: number, b: number) =>
-        b - a >= len * 2 && state.sliceDoc(a, a + len) === marker && state.sliceDoc(b - len, b) === marker;
+        a >= 0 && b <= state.doc.length && b - a >= len * 2 && state.sliceDoc(a, a + len) === marker && state.sliceDoc(b - len, b) === marker;
+    const isStarPair = (a: number, b: number, inner: boolean) =>
+        marker === '*' &&
+        (inner
+            ? state.sliceDoc(a + 1, a + 2) === '*' || state.sliceDoc(b - 2, b - 1) === '*'
+            : (a > 0 && state.sliceDoc(a - 1, a) === '*') || state.sliceDoc(b, b + 1) === '*');
 
     view.dispatch(
         state.changeByRange(({ from, to }) => {
@@ -58,9 +66,9 @@ const wrap = (marker: string) => (view: EditorView) => {
             const span =
                 node && hasMarker(node.from, node.to)
                     ? node
-                    : hasMarker(from - len, to + len)
+                    : hasMarker(from - len, to + len) && !isStarPair(from - len, to + len, false)
                       ? { from: from - len, to: to + len }
-                      : hasMarker(from, to)
+                      : hasMarker(from, to) && !isStarPair(from, to, true)
                         ? { from, to }
                         : null;
 
@@ -109,8 +117,10 @@ const heading = (view: EditorView) => {
 };
 
 /** Applies a link to the main selection. With `hide`, an empty `url` on a new link is a no-op and on an existing one removes it. */
-const applyLink = (view: EditorView, url: string, hide: boolean) => {
+const applyLink = (view: EditorView, rawUrl: string, hide: boolean) => {
     const { state } = view;
+    if (state.readOnly) return;
+    const url = escapeMdUrl(rawUrl);
     const { from, to } = state.selection.main;
     const node = findEnclosingNode(state, from, to, 'Link');
     const urlNode = hide && url ? node?.getChild('URL') : null;
@@ -140,8 +150,7 @@ const applyLink = (view: EditorView, url: string, hide: boolean) => {
 };
 
 const link = (view: EditorView) => {
-    const host = hostFor.get(view);
-    if (!host?.hideMarks || host?.showMarks) {
+    if (view.state.facet(marksMode) !== 'hide') {
         applyLink(view, 'https://', false);
         return true;
     }
@@ -153,22 +162,32 @@ const link = (view: EditorView) => {
     const apply = (input: string | null) => {
         if (input !== null) applyLink(view, input.trim(), true);
     };
-    if (emit(host, 'ma-link-prompt', { url: current, exists: !!urlNode, apply })) {
-        apply(prompt(urlNode ? 'Link URL (empty to remove link)' : 'Link URL', current));
+    if (emit(state.facet(markAreaHost) ?? view.dom, 'ma-link-prompt', { url: current, exists: !!urlNode, apply })) {
+        const s = state.facet(strings);
+        apply(prompt(urlNode ? s.linkPromptRemove : s.linkPrompt, current));
     }
     return true;
 };
 
-export const defaultUpload: UploadHandler = (file: File) =>
-    new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve({ url: String(reader.result), name: file.name });
-        reader.onerror = () => reject(reader.error ?? new Error('Failed to read file'));
-        reader.readAsDataURL(file);
+/** Inserts `text` as its own paragraph at the cursor line; `select` maps the text start to the new selection (default: cursor after it). */
+export const insertParagraph = (view: EditorView, text: string, select?: (from: number) => SelectionRange) => {
+    const { state } = view;
+    const line = state.doc.lineAt(state.selection.main.head);
+    const filled = !!line.text.trim();
+    const prefix = filled ? '\n\n' : line.number > 1 && state.doc.line(line.number - 1).text.trim() ? '\n' : '';
+    const suffix = line.to < state.doc.length && state.doc.lineAt(line.to + 1).text.trim() ? '\n' : '';
+    const pos = filled ? line.to : line.from;
+    const from = pos + prefix.length;
+    view.dispatch({
+        changes: { from: pos, insert: prefix + text + suffix },
+        selection: select?.(from) ?? EditorSelection.cursor(from + text.length),
+        scrollIntoView: true,
     });
+    return true;
+};
 
-const pickUpload = (kind: 'image' | 'file') => (view: EditorView) => {
-    hostFor.get(view)?.pickFiles(kind);
+const pickUpload = (kind: UploadKind) => (view: EditorView) => {
+    view.state.facet(markAreaHost)?.pickFiles(kind);
     return true;
 };
 
@@ -239,6 +258,7 @@ export const actions: EditorAction[] = [
         run: pickUpload('image'),
         key: 'Mod-Shift-i',
         hint: mod + shift + 'I',
+        enabled: (host) => host.uploads,
         html: icon(
             'm2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z'
         ),
@@ -248,6 +268,7 @@ export const actions: EditorAction[] = [
         run: pickUpload('file'),
         key: 'Mod-Shift-u',
         hint: mod + shift + 'U',
+        enabled: (host) => host.uploads,
         html: icon(
             'm18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13'
         ),
@@ -255,3 +276,23 @@ export const actions: EditorAction[] = [
 ];
 
 export const actionMap = new Map(actions.map((a) => [a.id, a]));
+
+/** Marks display modes in cycle order: code only, code on enter, WYSIWYG only. */
+export const markModes: Record<MarksMode, { label: 'modeShow' | 'modeAuto' | 'modeHide'; html: string }> = {
+    show: { label: 'modeShow', html: icon('M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25') },
+    auto: { label: 'modeAuto', html: icon('M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5') },
+    hide: { label: 'modeHide', html: icon('M2.036 12.322a1 1 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5s8.573 3.007 9.963 7.178a1 1 0 0 1 0 .639C20.577 16.49 16.64 19.5 12 19.5s-8.573-3.007-9.963-7.178ZM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z') },
+};
+
+/** Cycles marks mode. Opt-in: add `mode` to the `toolbar` attribute. */
+export const modeAction: EditorAction = {
+    id: 'mode',
+    label: 'Toggle markup mode',
+    html: markModes.auto.html,
+    run: (view) => {
+        const host = view.state.facet(markAreaHost);
+        if (!host) return false;
+        host.marks = ({ show: 'auto', auto: 'hide', hide: 'show' } as const)[host.marks];
+        return true;
+    },
+};

@@ -3,7 +3,7 @@ import { Decoration, type DecorationSet, type EditorView, ViewPlugin, type ViewU
 import { syntaxTree } from '@codemirror/language';
 import { Table } from '@lezer/markdown';
 import type { EditorAction, MarkPlugin, SyntaxNode } from '../types.ts';
-import { alt, findEnclosingNode, icon, mod } from '../commands.ts';
+import { alt, findEnclosingNode, icon, insertParagraph, mod } from '../commands.ts';
 import { mark } from '../preview.ts';
 
 export type TableAlign = 'left' | 'center' | 'right' | null;
@@ -28,7 +28,12 @@ const splitRow = (text: string, offset: number) => {
     const end = text.length - (trail && text.trim().length > 1 ? trail : 0);
     const cells: Array<{ text: string; from: number; to: number }> = [];
     for (let i = start, cur = start; i <= end; i++) {
-        if (i < end && (text[i] !== '|' || text[i - 1] === '\\')) continue;
+        if (i < end) {
+            if (text[i] !== '|') continue;
+            let bs = 0;
+            for (let j = i - 1; j >= cur && text[j] === '\\'; j--) bs++;
+            if (bs % 2 === 1) continue;
+        }
         const raw = text.slice(cur, i);
         const cell = raw.trim();
         const from = offset + cur + (cell ? raw.length - raw.trimStart().length : Math.min(1, raw.length));
@@ -119,15 +124,8 @@ const insertTable = (view: EditorView) => {
     const t = tableAt(state, head);
     if (t) return rewriteTable(view, t, { ...t, rows: [...t.rows, t.headers.map(() => '')] }, t.rows.length + 1, 0);
 
-    const line = state.doc.lineAt(head);
-    const filled = !!line.text.trim();
-    const prefix = filled ? '\n\n' : line.number > 1 && state.doc.line(line.number - 1).text.trim() ? '\n' : '';
-    const suffix = line.to < state.doc.length && state.doc.lineAt(line.to + 1).text.trim() ? '\n' : '';
-    const pos = filled ? line.to : line.from;
-    const start = pos + prefix.length + 2;
     const template = formatMarkdownTable({ headers: ['Col 1', 'Col 2'], aligns: [null, null], rows: [['', '']] });
-    view.dispatch({ changes: { from: pos, insert: prefix + template + suffix }, selection: EditorSelection.range(start, start + 5) });
-    return true;
+    return insertParagraph(view, template, (from) => EditorSelection.range(from + 2, from + 7));
 };
 
 /** Row and column of the cell at `head` within `t`. */
@@ -193,11 +191,97 @@ export const tableRawEditing: Extension = [
                 this.decorations = buildInline(view);
             }
             update(u: ViewUpdate) {
-                if (u.docChanged || u.viewportChanged || u.selectionSet) this.decorations = buildInline(u.view);
+                if (u.docChanged || u.viewportChanged || u.selectionSet || syntaxTree(u.state) !== syntaxTree(u.startState)) {
+                    this.decorations = buildInline(u.view);
+                }
             }
         },
         { decorations: (p) => p.decorations }
     ),
 ];
 
-export const tablePlugin = (...extension: Extension[]): MarkPlugin => ({ markdown: Table, actions: [tableAction], extension });
+export const tableStyles = /* css */ `
+.cm-table-line {
+    font-family: var(--ma-font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+    white-space: pre;
+}
+.cm-table-hidden-line {
+    display: none !important;
+}
+.cm-line > .cm-table-widget ~ .cm-widgetBuffer, .cm-line > .cm-widgetBuffer:has(+ .cm-table-widget) { display: none; }
+.cm-table-widget {
+    display: block;
+    margin: 0.375rem 0;
+    overflow-x: auto;
+    white-space: normal;
+    font-family: var(--ma-font, inherit);
+}
+.cm-table {
+    border-collapse: collapse;
+    width: var(--ma-table-width, auto);
+    min-width: 12rem;
+    font-size: var(--ma-table-font-size, 0.875em);
+    border: var(--ma-table-border, 1px solid color-mix(in srgb, currentColor 18%, transparent));
+    border-radius: var(--ma-table-radius, 0.25rem);
+}
+.cm-table th, .cm-table td {
+    border: var(--ma-table-border, 1px solid color-mix(in srgb, currentColor 18%, transparent));
+    padding: var(--ma-table-cell-padding, 0.3125rem 0.625rem);
+    min-width: 3.5rem;
+    height: 1.5em;
+    line-height: var(--ma-line-height, 1.5);
+    text-align: left;
+    vertical-align: top;
+}
+.cm-table th {
+    font-weight: 600;
+    background: var(--ma-table-header-bg, color-mix(in srgb, currentColor 6%, transparent));
+}
+.cm-table tr:nth-child(even) td {
+    background: var(--ma-table-stripe-bg, color-mix(in srgb, currentColor 2.5%, transparent));
+}
+.cm-table-widget:not(.cm-table-wysiwyg) .cm-table th,
+.cm-table-widget:not(.cm-table-wysiwyg) .cm-table td {
+    cursor: text;
+}
+.cm-table-wysiwyg th[contenteditable="true"]:focus,
+.cm-table-wysiwyg td[contenteditable="true"]:focus {
+    outline: 2px solid var(--ma-link-color, #2563eb);
+    outline-offset: -2px;
+    background: color-mix(in srgb, var(--ma-link-color, #2563eb) 8%, transparent);
+}
+.cm-table-controls {
+    display: none;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
+}
+.cm-table-widget:focus-within .cm-table-controls,
+.cm-editor.cm-focused .cm-table-controls-raw {
+    display: flex;
+}
+.cm-table-btn {
+    border: var(--ma-table-border, 1px solid color-mix(in srgb, currentColor 18%, transparent));
+    border-radius: 0.25rem;
+    background: var(--ma-btn-bg, transparent);
+    color: inherit;
+    font: inherit;
+    font-size: 0.6875rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.375rem;
+    cursor: pointer;
+    opacity: 0.75;
+}
+.cm-table-btn:hover {
+    opacity: 1;
+    background: var(--ma-btn-hover-bg, color-mix(in srgb, currentColor 10%, transparent));
+}
+`;
+
+export const tablePlugin = (...extension: Extension[]): MarkPlugin => ({
+    markdown: Table,
+    actions: [tableAction],
+    extension,
+    styles: tableStyles,
+});

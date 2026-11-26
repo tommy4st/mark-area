@@ -1,0 +1,30 @@
+name: Publish
+
+# Tags are created by scripts/release.sh (devbox run release).
+# Needs the secret PACKAGES_TOKEN: an access token with the write:package scope.
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: docker
+    steps:
+      - name: Checkout repository
+        uses: https://code.forgejo.org/actions/checkout@v4
+
+      - name: Setup Bun
+        uses: https://github.com/oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install dependencies & build
+        run: |
+          bun install --frozen-lockfile
+          bun run check
+
+      - name: Publish to the Forgejo package registry
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
+        run: bun publish --registry "$GITHUB_SERVER_URL/api/packages/$GITHUB_REPOSITORY_OWNER/npm/"

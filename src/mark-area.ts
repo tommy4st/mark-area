@@ -1,45 +1,52 @@
 import { Compartment, EditorSelection, EditorState, type Extension } from '@codemirror/state';
-import { Decoration, type DecorationSet, EditorView, ViewPlugin, drawSelection, keymap, placeholder } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { markdown } from '@codemirror/lang-markdown';
-import { type MarkdownConfig, Strikethrough } from '@lezer/markdown';
-import type { ActionId, EditorAction, MarkPlugin, UploadHandler, UploadResult } from './types.ts';
-import { actionMap, defaultUpload } from './commands.ts';
-import { createPreview } from './preview.ts';
+import { EditorView, drawSelection, keymap, placeholder } from '@codemirror/view';
+import { history, historyKeymap, standardKeymap } from '@codemirror/commands';
+import { Language } from '@codemirror/language';
+// Not `markdown()`: it bundles the HTML, CSS and JS grammars even when unused.
+import {
+    commonmarkLanguage,
+    deleteMarkupBackward,
+    insertNewlineContinueMarkup,
+    pasteURLAsLink,
+} from '@codemirror/lang-markdown';
+import { type MarkdownExtension, type MarkdownParser, Strikethrough } from '@lezer/markdown';
+import type { ActionId, EditorAction, MarkPlugin, UploadHandler } from './types.ts';
+import {
+    actionInterceptor,
+    defaultStrings,
+    markAreaHost,
+    marksMode,
+    strings,
+    type MarkAreaHost,
+    type MarksMode,
+    type Strings,
+    type UploadKind,
+} from './host.ts';
+import { actionMap, markModes, modeAction } from './commands.ts';
+import { linePart, preview } from './preview.ts';
 import { domHandlers } from './handlers.ts';
 import { getSheet, styles } from './styles.ts';
-import { cellActionFor, el, emit, hostFor } from './utils.ts';
+import { defaultUpload, uploadOne, uploadSnippets, whileUploading } from './upload.ts';
+import { el, emit } from './utils.ts';
 
 type ActionLabels = Record<string, { label?: string; title?: string }>;
 
-const linePartDeco = Decoration.line({ attributes: { part: 'line' } });
-const linePart = ViewPlugin.fromClass(
-    class {
-        decorations: DecorationSet;
-        constructor(view: EditorView) {
-            this.decorations = this.build(view);
-        }
-        update(u: { view: EditorView; docChanged: boolean; viewportChanged: boolean }) {
-            if (u.docChanged || u.viewportChanged) this.decorations = this.build(u.view);
-        }
-        build(view: EditorView): DecorationSet {
-            const ranges = [];
-            for (const { from, to } of view.visibleRanges) {
-                for (let pos = from; pos <= to; ) {
-                    const line = view.state.doc.lineAt(pos);
-                    ranges.push(linePartDeco.range(line.from));
-                    pos = line.to + 1;
-                }
-            }
-            return Decoration.set(ranges, true);
-        }
-    },
-    { decorations: (v) => v.decorations }
-);
+/** Reconfigurable parts of the editor; each lives in its own compartment. */
+type Part = 'history' | 'strings' | 'keys' | 'plugins' | 'marks' | 'state' | 'attrs';
+const PARTS: Part[] = ['history', 'strings', 'keys', 'plugins', 'marks', 'state', 'attrs'];
+const pluginSheetCache = new Map<string, CSSStyleSheet>();
+const isPlugin = (p: object): p is MarkPlugin => ['extension', 'actions', 'markdown', 'styles'].some((k) => k in p);
+
+/**
+ * What `markdown({ extensions })` builds, minus its HTML support. Keeps the language data of
+ * `@codemirror/lang-markdown`, which its list commands and paste handler check for.
+ */
+const markdownLanguage = (extensions: MarkdownExtension[]) =>
+    new Language(commonmarkLanguage.data, (commonmarkLanguage.parser as MarkdownParser).configure(extensions), [], 'markdown');
 
 // ---- Web Component ----
 
-export class MarkArea extends HTMLElement {
+export class MarkArea extends HTMLElement implements MarkAreaHost {
     static formAssociated = true;
     static observedAttributes = [
         'value',
@@ -48,6 +55,8 @@ export class MarkArea extends HTMLElement {
         'disabled',
         'readonly',
         'required',
+        'required-message',
+        'marks',
         'hide-marks',
         'show-marks',
         'toolbar',
@@ -57,16 +66,23 @@ export class MarkArea extends HTMLElement {
     readonly #internals?: ElementInternals;
     readonly #root: ShadowRoot;
     readonly #slot: HTMLSlotElement;
-    readonly #config = new Compartment();
-    #view!: EditorView;
+    readonly #compartments = Object.fromEntries(PARTS.map((p) => [p, new Compartment()])) as Record<Part, Compartment>;
+    #view?: EditorView;
+    /** Editor state kept while the element is disconnected (the view is destroyed to release its listeners). */
+    #state?: EditorState;
     #defaultValue = '';
     #syncing = false;
     #upload: UploadHandler = defaultUpload;
     #plugins: Array<MarkPlugin | Extension> = [];
+    #resolved: MarkPlugin[] = [];
     #userSheets: CSSStyleSheet[] = [];
     #managedSheets = new Set<CSSStyleSheet>();
+    #fallbackStyles: HTMLStyleElement[] = [];
     #buttons: HTMLButtonElement[] = [];
     #labels: ActionLabels = {};
+    #strings: Partial<Strings> = {};
+    /** Insertion ranges of running uploads, mapped through edits made meanwhile. */
+    #pending = new Set<{ from: number; to: number }>();
 
     constructor() {
         super();
@@ -87,22 +103,23 @@ export class MarkArea extends HTMLElement {
         const slot = el('slot', { name: 'toolbar' });
         this.#slot = slot;
 
-
         bar.append(slot);
         bar.onmousedown = (e) => e.preventDefault();
         bar.onclick = (e) => {
             const id = (e.target as Element | null)?.closest<HTMLElement>('[data-action]')?.dataset.action as
                 | ActionId
                 | undefined;
-            if (id && !this.disabled && !this.readOnly) this.exec(id);
+            if (id) this.exec(id);
         };
 
+        // Native `input` events of the editable DOM would reach listeners in addition to the element's own.
+        this.#root.addEventListener('input', (e) => e.stopPropagation());
         this.#root.append(bar);
     }
 
     #createToolbarButton(a: EditorAction): HTMLButtonElement {
         const l = this.#labels[a.id];
-        const name = l?.title ?? a.id;
+        const name = l?.title ?? a.label ?? a.id;
         const btn = el(
             'button',
             {
@@ -110,65 +127,194 @@ export class MarkArea extends HTMLElement {
                 tabIndex: -1,
                 title: a.hint ? `${name} (${a.hint})` : name,
                 innerHTML: a.html,
-                ariaLabel: l?.label ?? name,
+                ariaLabel: l?.label ?? a.label ?? name,
             },
             `button button-${a.id}`
         );
         btn.dataset.action = a.id;
+        if (a.id === 'mode') {
+            const m = markModes[this.marks];
+            btn.innerHTML = m.html;
+            btn.title = `${name}: ${this.strings[m.label]}`;
+        }
         return btn;
     }
 
-    #resolvedPlugins(): MarkPlugin[] {
-        const isPlugin = (p: object): p is MarkPlugin => ['extension', 'actions', 'markdown', 'styles'].some((k) => k in p);
-        return this.#plugins.filter(Boolean).map((p) => (typeof p === 'object' && isPlugin(p) ? p : { extension: p as Extension }));
+    #activeActions(): Map<ActionId, EditorAction> {
+        const map = new Map<ActionId, EditorAction>([...actionMap, ['mode', modeAction]]);
+        for (const a of this.#resolved.flatMap((p) => p.actions ?? [])) map.set(a.id, a);
+        return map;
     }
 
-    #activeActions(): Map<ActionId, EditorAction> {
-        const map = new Map(actionMap);
-        for (const a of this.#resolvedPlugins().flatMap((p) => p.actions ?? [])) map.set(a.id, a);
-        return map;
+    #allowed(a: EditorAction) {
+        return a.enabled?.(this) ?? true;
+    }
+
+    /** Builds the current extension of one part. */
+    #extension(part: Part): Extension {
+        switch (part) {
+            case 'history':
+                return history();
+            case 'strings':
+                return strings.of(this.#strings);
+            case 'keys':
+                return keymap.of(
+                    [...this.#activeActions().values()]
+                        .filter((a) => a.key && this.#allowed(a))
+                        .map((a) => ({ key: a.key!, run: () => this.exec(a.id), preventDefault: true }))
+                );
+            case 'plugins':
+                return [
+                    markdownLanguage([Strikethrough, ...this.#resolved.flatMap((p) => p.markdown ?? [])]),
+                    this.#resolved.flatMap((p) => p.extension ?? []),
+                ];
+            case 'marks':
+                return marksMode.of(this.marks);
+            case 'state':
+                return [
+                    EditorView.editable.of(!this.disabled && !this.readOnly),
+                    EditorState.readOnly.of(this.disabled || this.readOnly),
+                ];
+            case 'attrs':
+                return [
+                    this.placeholder ? placeholder(this.placeholder) : [],
+                    EditorView.contentAttributes.of({
+                        part: 'content',
+                        'aria-multiline': 'true',
+                        'aria-required': String(this.required),
+                    }),
+                ];
+        }
+    }
+
+    /** Reconfigures only the given parts. */
+    #apply(...parts: Part[]) {
+        this.#view?.dispatch({ effects: parts.map((p) => this.#compartments[p].reconfigure(this.#extension(p))) });
+    }
+
+    #createState(doc: string): EditorState {
+        const part = (p: Part) => this.#compartments[p].of(this.#extension(p));
+        return EditorState.create({
+            doc,
+            extensions: [
+                part('history'),
+                drawSelection(),
+                EditorView.lineWrapping,
+                domHandlers,
+                markAreaHost.of(this),
+                part('strings'),
+                part('keys'),
+                part('plugins'),
+                part('marks'),
+                preview,
+                part('state'),
+                part('attrs'),
+                linePart,
+                keymap.of([
+                    { key: 'Enter', run: insertNewlineContinueMarkup },
+                    { key: 'Backspace', run: deleteMarkupBackward },
+                    ...standardKeymap,
+                    ...historyKeymap,
+                ]),
+                pasteURLAsLink,
+                EditorView.updateListener.of((u) => {
+                    if (u.docChanged) {
+                        for (const p of this.#pending) {
+                            p.from = u.changes.mapPos(p.from, 1);
+                            p.to = Math.max(p.from, u.changes.mapPos(p.to, 1));
+                        }
+                        if (!this.#syncing) {
+                            this.#updateFormValue();
+                            this.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+                        }
+                    }
+                    if (u.focusChanged && !u.view.hasFocus) {
+                        this.classList.add('ma-touched');
+                        this.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+                    }
+                }),
+            ],
+        });
+    }
+
+    /**
+     * Takes over a child `<textarea>` (the no-JS fallback): copies its attributes the host lacks, except `class`,
+     * removes it so it is not submitted twice, and returns its value.
+     */
+    #adoptTextarea(): string | undefined {
+        const ta = this.querySelector(':scope > textarea');
+        if (!(ta instanceof HTMLTextAreaElement)) return undefined;
+        for (const { name, value } of ta.attributes) {
+            if (name !== 'class' && !this.hasAttribute(name)) this.setAttribute(name, value);
+        }
+        ta.remove();
+        return ta.value;
     }
 
     connectedCallback() {
         if (!this.#view) {
-            const initial = this.getAttribute('value') ?? this.textContent?.trim() ?? '';
-            this.#defaultValue = initial;
-
-            this.#view = new EditorView({
-                parent: this.#root,
-                state: EditorState.create({
-                    doc: initial,
-                    extensions: [
-                        history(),
-                        drawSelection(),
-                        EditorView.lineWrapping,
-                        domHandlers,
-                        this.#config.of(this.#dynamicExtensions()),
-                        keymap.of([...defaultKeymap, ...historyKeymap]),
-                        EditorView.updateListener.of((u) => {
-                            if (u.docChanged && !this.#syncing) {
-                                this.#updateFormValue();
-                                this.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-                            }
-                            if (u.focusChanged && !u.view.hasFocus) {
-                                this.classList.add('ma-touched');
-                                this.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-                            }
-                        }),
-                    ],
-                }),
-            });
+            const restored = this.#state;
+            if (!restored) {
+                const adopted = this.#adoptTextarea();
+                this.#defaultValue = this.getAttribute('value') ?? adopted ?? this.textContent?.trim() ?? '';
+            }
+            this.#view = new EditorView({ parent: this.#root, state: restored ?? this.#createState(this.#defaultValue) });
+            this.#state = undefined;
             this.#view.dom.setAttribute('part', 'editor');
             this.#view.scrollDOM.setAttribute('part', 'scroller');
-            hostFor.set(this.#view, this);
+            // Attributes and properties may have changed while disconnected.
+            if (restored) this.#apply(...PARTS);
         }
-        this.#syncConfig();
+        this.style.setProperty('--ma-rows', String(this.rows));
+        this.#syncToolbar();
+        this.#syncStyles();
+        this.#updateFormValue();
+    }
+
+    disconnectedCallback() {
+        // Deferred so a DOM move (remove + insert in the same task) keeps the live view.
+        queueMicrotask(() => {
+            if (this.isConnected || !this.#view) return;
+            this.#state = this.#view.state;
+            this.#view.destroy();
+            this.#view = undefined;
+        });
     }
 
     attributeChangedCallback(name: string, _oldVal: string | null, newVal: string | null) {
-        if (!this.#view) return;
-        if (name === 'value') this.value = newVal ?? '';
-        else this.#syncConfig();
+        if (!this.#view && !this.#state) return;
+        switch (name) {
+            case 'value':
+                this.value = newVal ?? '';
+                break;
+            case 'rows':
+                this.style.setProperty('--ma-rows', String(this.rows));
+                break;
+            case 'toolbar':
+                this.#syncToolbar();
+                break;
+            case 'placeholder':
+                this.#apply('attrs');
+                break;
+            case 'required':
+            case 'required-message':
+                this.#apply('attrs');
+                this.#updateFormValue();
+                break;
+            case 'disabled':
+            case 'readonly':
+                this.#apply('state');
+                this.#updateFormValue();
+                break;
+            case 'uploads':
+                this.#apply('keys');
+                this.#syncToolbar();
+                break;
+            default:
+                // marks, hide-marks, show-marks
+                this.#apply('marks');
+                this.#syncToolbar();
+        }
     }
 
     formResetCallback() {
@@ -184,25 +330,39 @@ export class MarkArea extends HTMLElement {
         this.value = state;
     }
 
-    get view(): EditorView {
+    /** The CodeMirror view; undefined before the first connect and while disconnected. */
+    get view(): EditorView | undefined {
         return this.#view;
     }
 
     get value(): string {
-        return this.#view ? this.#view.state.doc.toString() : (this.getAttribute('value') ?? '');
+        return (this.#view?.state ?? this.#state)?.doc.toString() ?? this.getAttribute('value') ?? '';
     }
+    /** Replaces the document and, like a native `<textarea>`, clears the undo history. */
     set value(v: string) {
-        if (!this.#view) {
+        const state = this.#view?.state ?? this.#state;
+        if (!state) {
             this.setAttribute('value', v);
             return;
         }
-        const cur = this.#view.state.doc.toString();
-        if (v !== cur) {
+        if (v === state.doc.toString()) return;
+        const tr = state.update({
+            changes: { from: 0, to: state.doc.length, insert: v },
+            effects: this.#compartments.history.reconfigure([]),
+        });
+        if (this.#view) {
             this.#syncing = true;
-            this.#view.dispatch({ changes: { from: 0, to: cur.length, insert: v } });
+            this.#view.dispatch(tr);
             this.#syncing = false;
-            this.#updateFormValue();
+            this.#apply('history');
+        } else {
+            for (const p of this.#pending) {
+                p.from = tr.changes.mapPos(p.from, 1);
+                p.to = Math.max(p.from, tr.changes.mapPos(p.to, 1));
+            }
+            this.#state = tr.state;
         }
+        this.#updateFormValue();
     }
 
     get name(): string {
@@ -247,27 +407,44 @@ export class MarkArea extends HTMLElement {
         this.toggleAttribute('required', v);
     }
 
+    /** Markup display: `auto` (code on enter), `hide` (WYSIWYG only) or `show` (code only). */
+    get marks(): MarksMode {
+        const v = this.getAttribute('marks');
+        if (v === 'auto' || v === 'hide' || v === 'show') return v;
+        return this.hasAttribute('show-marks') ? 'show' : this.hasAttribute('hide-marks') ? 'hide' : 'auto';
+    }
+    set marks(v: MarksMode) {
+        this.setAttribute('marks', v);
+    }
+
+    /** @deprecated Use `marks = 'hide'`. Ignored while the `marks` attribute is set. */
     get hideMarks(): boolean {
-        return this.hasAttribute('hide-marks');
+        return this.marks === 'hide';
     }
     set hideMarks(v: boolean) {
         this.toggleAttribute('hide-marks', v);
     }
 
+    /** @deprecated Use `marks = 'show'`. Ignored while the `marks` attribute is set. */
     get showMarks(): boolean {
-        return this.hasAttribute('show-marks');
+        return this.marks === 'show';
     }
     set showMarks(v: boolean) {
         this.toggleAttribute('show-marks', v);
     }
-
 
     get plugins(): Array<MarkPlugin | Extension> {
         return this.#plugins;
     }
     set plugins(list: Array<MarkPlugin | Extension> | null | undefined) {
         this.#plugins = list ? [...list] : [];
-        if (this.#view) this.#syncConfig();
+        this.#resolved = this.#plugins
+            .filter(Boolean)
+            .map((p) => (typeof p === 'object' && isPlugin(p) ? p : { extension: p as Extension }));
+        if (!this.#view) return;
+        this.#apply('plugins', 'keys');
+        this.#syncToolbar();
+        this.#syncStyles();
     }
 
     get form(): HTMLFormElement | null {
@@ -297,12 +474,14 @@ export class MarkArea extends HTMLElement {
     }
 
     exec(actionId: ActionId): boolean {
+        const view = this.#view;
         const action = this.#activeActions().get(actionId);
-        if (!action || !this.#view || !this.#allowed(actionId)) return false;
-        if (cellActionFor.get(this.#view)?.(actionId)) return true;
-        this.#view.focus();
-        if (!emit(this, 'ma-action', { action: actionId, view: this.#view })) return true;
-        return action.run(this.#view);
+        if (!action || !view || !this.#allowed(action)) return false;
+        if (this.disabled || (this.readOnly && actionId !== 'mode')) return false;
+        if (!emit(this, 'ma-action', { action: actionId, view })) return true;
+        for (const fn of view.state.facet(actionInterceptor)) if (fn(view, actionId)) return true;
+        view.focus();
+        return action.run(view);
     }
 
     adoptStyles(...sheets: CSSStyleSheet[]) {
@@ -311,28 +490,35 @@ export class MarkArea extends HTMLElement {
     }
 
     #syncStyles() {
-        if (!('adoptedStyleSheets' in this.#root)) return;
+        const canAdopt =
+            'adoptedStyleSheets' in this.#root && typeof CSSStyleSheet !== 'undefined' && 'replaceSync' in CSSStyleSheet.prototype;
+        if (!canAdopt) {
+            for (const s of this.#fallbackStyles) s.remove();
+            this.#fallbackStyles = this.#resolved
+                .filter((p): p is MarkPlugin & { styles: string } => typeof p.styles === 'string' && !!p.styles)
+                .map((p) => el('style', { textContent: p.styles }));
+            this.#root.append(...this.#fallbackStyles);
+            return;
+        }
         const base = getSheet();
         const pluginSheets: CSSStyleSheet[] = [];
-        for (const p of this.#resolvedPlugins()) {
+        for (const p of this.#resolved) {
             if (!p.styles) continue;
             if (typeof p.styles === 'string') {
-                if (typeof CSSStyleSheet !== 'undefined' && 'replaceSync' in CSSStyleSheet.prototype) {
-                    const s = new CSSStyleSheet();
+                let s = pluginSheetCache.get(p.styles);
+                if (!s) {
+                    s = new CSSStyleSheet();
                     s.replaceSync(p.styles);
-                    pluginSheets.push(s);
+                    pluginSheetCache.set(p.styles, s);
                 }
+                pluginSheets.push(s);
             } else {
                 pluginSheets.push(p.styles);
             }
         }
         const cur = this.#root.adoptedStyleSheets;
         const external = cur.filter((s) => !this.#managedSheets.has(s));
-        const managed = [
-            ...(base ? [base] : []),
-            ...pluginSheets,
-            ...this.#userSheets,
-        ];
+        const managed = [...(base ? [base] : []), ...pluginSheets, ...this.#userSheets];
         this.#managedSheets = new Set(managed);
         const next = [...external, ...managed];
         if (cur.length !== next.length || cur.some((s, i) => s !== next[i])) {
@@ -367,8 +553,16 @@ export class MarkArea extends HTMLElement {
         if (this.#view) this.#syncToolbar();
     }
 
-    #allowed(id: string) {
-        return this.uploads || (id !== 'image' && id !== 'file');
+    /** All user-facing strings outside the toolbar; assign a partial map to override (see `defaultStrings`). */
+    get strings(): Strings {
+        return { ...defaultStrings, ...this.#strings };
+    }
+    set strings(v: Partial<Strings> | null | undefined) {
+        this.#strings = v ?? {};
+        if (!this.#view) return;
+        this.#apply('strings');
+        this.#syncToolbar();
+        this.#updateFormValue();
     }
 
     get upload(): UploadHandler {
@@ -400,31 +594,7 @@ export class MarkArea extends HTMLElement {
         else this.setAttribute('csrf-token', v);
     }
 
-    async #postUpload(file: File, kind: 'image' | 'file'): Promise<UploadResult> {
-        const body = new FormData();
-        body.append('file', file);
-        body.append('kind', kind);
-        const token = this.csrfToken;
-        const res = await fetch(this.uploadUrl!, {
-            method: 'POST',
-            body,
-            credentials: 'same-origin',
-            headers: { Accept: 'application/json', ...(token ? { 'X-CSRF-Token': token } : {}) },
-        });
-        if (!res.ok) {
-            const body = await res.text().catch(() => '');
-            let message = body.trim();
-            try {
-                const json = JSON.parse(body) as { error?: string; message?: string };
-                message = json.error ?? json.message ?? message;
-            } catch {}
-            throw new Error(message || `Upload failed: ${res.status} ${res.statusText}`);
-        }
-        const type = res.headers.get('content-type') ?? '';
-        return type.includes('json') ? ((await res.json()) as UploadResult) : (await res.text()).trim();
-    }
-
-    pickFiles(kind: 'image' | 'file' = 'file') {
+    pickFiles(kind: UploadKind = 'file') {
         if (this.disabled || this.readOnly) return;
         const input = el('input', {
             type: 'file',
@@ -437,102 +607,52 @@ export class MarkArea extends HTMLElement {
         input.click();
     }
 
-    async uploadFiles(files: Iterable<File> | ArrayLike<File>, kind?: 'image' | 'file'): Promise<void> {
-        if (!this.#view || this.disabled || this.readOnly) return;
+    /** Uploads a single image and returns its URL (null when uploads are off, cancelled or failed). Used by custom blocks. */
+    async uploadImage(file: File): Promise<string | null> {
+        if (!this.uploads || this.disabled || this.readOnly) return null;
+        return whileUploading(this, async () => (await uploadOne(this, file, 'image'))?.url ?? null);
+    }
+
+    /** Uploads `files` and inserts their Markdown where the selection was when the upload started. */
+    async uploadFiles(files: Iterable<File> | ArrayLike<File>, kind?: UploadKind): Promise<void> {
+        if (!this.#view || !this.uploads || this.disabled || this.readOnly) return;
         const list = Array.from(files);
         if (!list.length) return;
 
-        this.toggleAttribute('uploading', true);
-        this.toggleAttribute('upload-error', false);
+        const { from, to } = this.#view.state.selection.main;
+        const at = { from, to };
+        this.#pending.add(at);
         try {
-            const snippets: string[] = [];
-            for (const file of list) {
-                const fileKind: 'image' | 'file' =
-                    kind === 'image' || (kind !== 'file' && file.type.startsWith('image/')) ? 'image' : 'file';
-                const detail = {
-                    file,
-                    kind: fileKind,
-                    result: undefined as Promise<UploadResult> | UploadResult | undefined,
-                };
-                if (!emit(this, 'ma-upload', detail)) continue;
-                try {
-                    const res = await (detail.result ??
-                        (this.#upload === defaultUpload && this.uploadUrl
-                            ? this.#postUpload(file, fileKind)
-                            : this.#upload(file, fileKind)));
-                    const url = typeof res === 'string' ? res : res?.url;
-                    if (!url) throw new Error('Upload returned no URL');
-                    const name = ((typeof res === 'object' && res.name) || file.name || 'file').replace(/[\[\]]/g, '');
-                    snippets.push(fileKind === 'image' ? `![${name}](${url})` : `[${name}](${url})`);
-                } catch (err) {
-                    const error = err instanceof Error ? err : new Error(String(err));
-                    this.toggleAttribute('upload-error', true);
-                    if (emit(this, 'ma-upload-error', { file, kind: fileKind, error })) {
-                        console.error(`mark-area: upload of "${file.name}" failed`, error);
-                    }
-                }
-            }
-            if (!snippets.length) return;
+            const snippets = await whileUploading(this, () => uploadSnippets(this, list, kind));
+            const view = this.#view;
+            if (!snippets.length || !view || this.disabled || this.readOnly) return;
+            const len = view.state.doc.length;
+            const insFrom = Math.min(at.from, len);
+            const insTo = Math.min(Math.max(insFrom, at.to), len);
             const insert = snippets.join('\n');
-            const { from, to } = this.#view.state.selection.main;
-            this.#view.dispatch({
-                changes: { from, to, insert },
-                selection: EditorSelection.cursor(from + insert.length),
+            // Follow the insertion with the cursor unless the user moved on meanwhile.
+            const sel = view.state.selection.main;
+            const follow = sel.from === insFrom && sel.to === insTo;
+            view.dispatch({
+                changes: { from: insFrom, to: insTo, insert },
+                selection: follow ? EditorSelection.cursor(insFrom + insert.length) : undefined,
             });
-            this.#view.focus();
-            emit(this, 'ma-uploaded', { snippets, files: list, view: this.#view });
+            view.focus();
+            emit(this, 'ma-uploaded', { snippets, files: list, view });
         } finally {
-            this.toggleAttribute('uploading', false);
+            this.#pending.delete(at);
         }
-    }
-
-    #dynamicExtensions() {
-        const plugins = this.#resolvedPlugins();
-        const mdConfigs: MarkdownConfig[] = [Strikethrough];
-        const pluginExts: Extension[] = [];
-        for (const p of plugins) {
-            if (p.markdown) mdConfigs.push(p.markdown);
-            if (p.extension) pluginExts.push(p.extension);
-        }
-        const activeActions = Array.from(this.#activeActions().values());
-        return [
-            markdown({ extensions: mdConfigs }),
-            keymap.of(
-                activeActions
-                    .filter((a) => a.key && this.#allowed(a.id))
-                    .map((a) => ({ key: a.key!, run: () => this.exec(a.id), preventDefault: true }))
-            ),
-            ...pluginExts,
-            createPreview(this.showMarks ? 'show' : this.hideMarks ? 'hide' : 'auto'),
-            EditorView.editable.of(!this.disabled && !this.readOnly),
-            EditorState.readOnly.of(this.readOnly),
-            this.placeholder ? placeholder(this.placeholder) : [],
-            linePart,
-            EditorView.contentAttributes.of({
-                part: 'content',
-                'aria-multiline': 'true',
-                'aria-required': String(this.required),
-            }),
-        ];
     }
 
     #syncToolbar() {
         for (const b of this.#buttons) b.remove();
         const map = this.#activeActions();
-        const ids = this.toolbar ?? [...map.keys()];
+        const ids = this.toolbar ?? [...map.keys()].filter((id) => id !== 'mode');
         this.#buttons = ids
             .map((id) => map.get(id as ActionId))
-            .filter((a): a is EditorAction => !!a && this.#allowed(a.id))
+            .filter((a): a is EditorAction => !!a && this.#allowed(a))
             .map((a) => this.#createToolbarButton(a));
         this.#slot.append(...this.#buttons);
-    }
-
-    #syncConfig() {
-        this.style.setProperty('--ma-rows', String(this.rows));
-        this.#syncToolbar();
-        this.#syncStyles();
-        this.#view?.dispatch({ effects: this.#config.reconfigure(this.#dynamicExtensions()) });
-        this.#updateFormValue();
     }
 
     #updateFormValue() {
@@ -541,7 +661,7 @@ export class MarkArea extends HTMLElement {
         this.#internals.setFormValue(val);
         this.#internals.setValidity(
             this.required && !this.disabled && !val.trim() ? { valueMissing: true } : {},
-            this.getAttribute('required-message') || 'Please fill out this field.',
+            this.getAttribute('required-message') || this.strings.required,
             this.#view?.contentDOM
         );
     }
@@ -552,7 +672,6 @@ export function defineMarkArea(tagName = 'mark-area') {
         customElements.define(tagName, MarkArea);
     }
 }
-
 
 declare global {
     interface HTMLElementTagNameMap {

@@ -154,7 +154,22 @@ Switch between **preview**, **inline**, **wysiwyg**, or **none** above, or press
 
     <section>
         <h2>7. Custom Upload Function (e.g. remote server / Blob URL instead of Base64)</h2>
-        <mark-area id="custom-upload-editor" rows="3" value="Drop, paste, or use the image/file toolbar buttons here. Uses a custom `editor.upload` function."></mark-area>
+        <mark-area id="custom-upload-editor" rows="3" uploads value="Drop, paste, or use the image/file toolbar buttons here. Uses a custom `editor.upload` function."></mark-area>
+    </section>
+
+    <section>
+        <h2>8. Custom Blocks (opt-in) &ndash; WYSIWYG card editing</h2>
+        <p>Click any field (name, email, phone, url, FAQ question, body) inside a card and type. Press <kbd>Enter</kbd> or click away to write the change back to the <code>:::</code> line. Click elsewhere on a card to see the raw source. Click or drop an image on the round vCard slot to upload a photo.</p>
+        <mark-area id="blocks-editor" rows="14" uploads toolbar="undo redo bold italic strike heading bullet ordered quote code link image file block-vcard block-faq mode">## Contacts
+
+:::vcard{name="Ada Lovelace" email="ada@example.com" phone="+44 20 7946 0000" title="Mathematician"}
+First programmer. Notes in **Markdown**.
+:::
+
+:::faq{question="How do refunds work?" open}
+Answer body in **Markdown**.
+:::
+</mark-area>
     </section>
 
     <script type="module" src="./demo.js"></script>

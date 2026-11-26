@@ -9,7 +9,8 @@ import {
 } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
 import type { SyntaxNode } from './types.ts';
-import { el, emit, hostFor } from './utils.ts';
+import { markAreaHost, marksMode, strings } from './host.ts';
+import { el, emit } from './utils.ts';
 
 // ---- Live preview & widgets ----
 
@@ -51,7 +52,7 @@ function commitImageWidth(view: EditorView, wrap: HTMLElement, width: string) {
         const urlNode = n.name === 'Image' && n.getChild('URL');
         if (urlNode) {
             const { src } = parseImageUrl(view.state.sliceDoc(urlNode.from, urlNode.to));
-            const host = hostFor.get(view);
+            const host = view.state.facet(markAreaHost);
             if (host && !emit(host, 'ma-image-resize', { src, width, view })) return;
             const insert = width ? `${src}#w=${width}` : src;
             view.dispatch({
@@ -102,7 +103,7 @@ class ImageWidget extends WidgetType {
 
         const handle = el(
             'span',
-            { className: 'cm-image-handle', title: 'Drag to resize (double-click to reset)' },
+            { className: 'cm-image-handle', title: view.state.facet(strings).imageResize },
             'image-handle'
         );
         handle.ondblclick = (e) => {
@@ -116,6 +117,7 @@ class ImageWidget extends WidgetType {
             e.stopPropagation();
             handle.setPointerCapture(e.pointerId);
             const startX = e.clientX;
+            const origWidth = wrap.style.width;
             const startW = wrap.getBoundingClientRect().width || img.getBoundingClientRect().width;
             const maxW = (view.contentDOM.clientWidth || 800) - 28;
             let px = Math.round(startW);
@@ -125,13 +127,18 @@ class ImageWidget extends WidgetType {
                 px = Math.max(32, Math.min(maxW, Math.round(startW + ev.clientX - startX)));
                 wrap.style.width = `${px}px`;
             };
-            handle.onpointerup = handle.onpointercancel = (ev) => {
+            const end = (ev: PointerEvent, commit: boolean) => {
                 handle.releasePointerCapture(ev.pointerId);
                 handle.onpointermove = handle.onpointerup = handle.onpointercancel = null;
                 wrap.classList.remove('resizing');
-                if (Math.abs(ev.clientX - startX) > 2) commitImageWidth(view, wrap, String(px));
-                else view.focus();
+                if (commit && Math.abs(ev.clientX - startX) > 2) commitImageWidth(view, wrap, String(px));
+                else {
+                    wrap.style.width = origWidth;
+                    if (commit) view.focus();
+                }
             };
+            handle.onpointerup = (ev) => end(ev, true);
+            handle.onpointercancel = (ev) => end(ev, false);
         };
 
         wrap.append(img, presets, handle);
@@ -169,10 +176,9 @@ interface PreviewState {
     hidden: Array<{ from: number; to: number }>;
 }
 
-export type MarksMode = 'auto' | 'hide' | 'show';
-
-function buildDecorations(view: EditorView, mode: MarksMode): PreviewState {
+function buildDecorations(view: EditorView): PreviewState {
     const { state } = view;
+    const mode = state.facet(marksMode);
     const { doc } = state;
     const touches = (from: number, to: number) =>
         mode === 'show' || (mode === 'auto' && view.hasFocus && state.selection.ranges.some((r) => r.from <= to && r.to >= from));
@@ -218,8 +224,10 @@ function buildDecorations(view: EditorView, mode: MarksMode): PreviewState {
                     out.push(mark(inlineStyles[name]).range(from, to));
                 } else if ((name === 'HeaderMark' && pName?.startsWith('ATXHeading')) || name === 'QuoteMark') {
                     const line = doc.lineAt(from);
-                    if (!touches(line.from, line.to)) addHide(from, Math.min(to + 1, line.to));
-                    else if (name === 'QuoteMark') out.push(mark('cm-mark').range(from, to));
+                    if (!touches(line.from, line.to)) {
+                        const hideTo = to < line.to && doc.sliceString(to, to + 1) === ' ' ? to + 1 : to;
+                        addHide(from, hideTo);
+                    } else if (name === 'QuoteMark') out.push(mark('cm-mark').range(from, to));
                 } else if (
                     name in hiddenMarks &&
                     (hiddenMarks[name] ? pName === hiddenMarks[name] : pName && pName in inlineStyles)
@@ -264,49 +272,92 @@ function buildDecorations(view: EditorView, mode: MarksMode): PreviewState {
     };
 }
 
-export const createPreview = (mode: MarksMode) =>
-    ViewPlugin.fromClass(
-        class {
-            decorations: DecorationSet;
-            atomic: DecorationSet;
-            hidden: Array<{ from: number; to: number }>;
-            constructor(view: EditorView) {
-                ({ decorations: this.decorations, atomic: this.atomic, hidden: this.hidden } = buildDecorations(view, mode));
-            }
-            update(u: ViewUpdate) {
-                Object.assign(this, buildDecorations(u.view, mode));
-                if (mode !== 'hide' || u.docChanged || !u.selectionSet) return;
-                const oldSel = u.startState.selection.main;
-                const newSel = u.state.selection.main;
-                if (!oldSel.empty || !newSel.empty || oldSel.head === newSel.head) return;
-
-                // If cursor just stepped over a zero-width hidden marker (0 visual movement), advance 1 visible char
-                const forward = newSel.head > oldSel.head;
-                const crossed = this.hidden.find((h) =>
-                    forward ? oldSel.head === h.from && newSel.head === h.to : oldSel.head === h.to && newSel.head === h.from
-                );
-                if (!crossed) return;
-
-                const docLen = u.state.doc.length;
-                let pos = newSel.head;
-                if (forward && pos < docLen) {
-                    const line = u.state.doc.lineAt(pos);
-                    pos = pos < line.to ? findClusterBreak(line.text, pos - line.from, true) + line.from : pos + 1;
-                } else if (!forward && pos > 0) {
-                    const line = u.state.doc.lineAt(pos);
-                    pos = pos > line.from ? findClusterBreak(line.text, pos - line.from, false) + line.from : pos - 1;
-                }
-                for (const h of this.hidden) {
-                    if (pos > h.from && pos < h.to) pos = forward ? h.to : h.from;
-                }
-                if (pos !== newSel.head) {
-                    queueMicrotask(() => u.view.dispatch({ selection: EditorSelection.cursor(pos) }));
-                }
-            }
-        },
-        {
-            decorations: (p) => p.decorations,
-            provide: (plugin) =>
-                EditorView.atomicRanges.of((view) => view.plugin(plugin)?.atomic ?? Decoration.none),
+/** Live preview: styles Markdown and hides its markers according to the `marksMode` facet. */
+export const preview = ViewPlugin.fromClass(
+    class {
+        decorations: DecorationSet;
+        atomic: DecorationSet;
+        hidden: Array<{ from: number; to: number }>;
+        constructor(view: EditorView) {
+            ({ decorations: this.decorations, atomic: this.atomic, hidden: this.hidden } = buildDecorations(view));
         }
-    );
+        update(u: ViewUpdate) {
+            const mode = u.state.facet(marksMode);
+            if (
+                u.docChanged ||
+                u.viewportChanged ||
+                u.selectionSet ||
+                u.focusChanged ||
+                mode !== u.startState.facet(marksMode) ||
+                syntaxTree(u.state) !== syntaxTree(u.startState)
+            ) {
+                Object.assign(this, buildDecorations(u.view));
+            }
+            if (mode !== 'hide' || u.docChanged || !u.selectionSet) return;
+            const oldSel = u.startState.selection.main;
+            const newSel = u.state.selection.main;
+            if (!oldSel.empty || !newSel.empty || oldSel.head === newSel.head) return;
+
+            // If cursor just stepped over a zero-width hidden marker (0 visual movement), advance 1 visible char
+            const forward = newSel.head > oldSel.head;
+            const crossed = this.hidden.find((h) =>
+                forward ? oldSel.head === h.from && newSel.head === h.to : oldSel.head === h.to && newSel.head === h.from
+            );
+            if (!crossed) return;
+
+            const docLen = u.state.doc.length;
+            let pos = newSel.head;
+            if (forward && pos < docLen) {
+                const line = u.state.doc.lineAt(pos);
+                pos = pos < line.to ? findClusterBreak(line.text, pos - line.from, true) + line.from : pos + 1;
+            } else if (!forward && pos > 0) {
+                const line = u.state.doc.lineAt(pos);
+                pos = pos > line.from ? findClusterBreak(line.text, pos - line.from, false) + line.from : pos - 1;
+            }
+            for (const h of this.hidden) {
+                if (pos > h.from && pos < h.to) pos = forward ? h.to : h.from;
+            }
+            if (pos !== newSel.head) {
+                queueMicrotask(() => {
+                    if (u.view.state === u.state && u.view.dom.isConnected) {
+                        u.view.dispatch({ selection: EditorSelection.cursor(pos) });
+                    }
+                });
+            }
+        }
+    },
+    {
+        decorations: (p) => p.decorations,
+        provide: (plugin) => EditorView.atomicRanges.of((view) => view.plugin(plugin)?.atomic ?? Decoration.none),
+    }
+);
+
+const linePartDeco = Decoration.line({ attributes: { part: 'line' } });
+/** Exposes every visible line as `::part(line)`. */
+export const linePart = ViewPlugin.fromClass(
+    class {
+        decorations: DecorationSet;
+        constructor(view: EditorView) {
+            this.decorations = this.build(view);
+        }
+        update(u: ViewUpdate) {
+            if (u.docChanged || u.viewportChanged) this.decorations = this.build(u.view);
+        }
+        build(view: EditorView): DecorationSet {
+            const ranges = [];
+            let lastLine = -1;
+            for (const { from, to } of view.visibleRanges) {
+                for (let pos = from; pos <= to; ) {
+                    const line = view.state.doc.lineAt(pos);
+                    if (line.from !== lastLine) {
+                        ranges.push(linePartDeco.range(line.from));
+                        lastLine = line.from;
+                    }
+                    pos = line.to + 1;
+                }
+            }
+            return Decoration.set(ranges, true);
+        }
+    },
+    { decorations: (v) => v.decorations }
+);

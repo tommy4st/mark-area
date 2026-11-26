@@ -10,28 +10,26 @@
   "files": [
     "dist"
   ],
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
-  },
   "scripts": {
     "dev": "bun index.html",
     "build:bundle": "bun run build:lib && bun run build:standalone",
-    "build:types": "bunx tsc index.ts define.ts tables.ts src/table/inline.ts src/table/preview.ts src/table/wysiwyg.ts --ignoreConfig --allowImportingTsExtensions --rewriteRelativeImportExtensions --declaration --emitDeclarationOnly --outDir dist --target ESNext --module preserve --moduleResolution bundler --lib ESNext,DOM",
+    "build:types": "bunx tsc -p tsconfig.build.json",
     "build": "bun run clean && bun run build:bundle && bun run build:types",
     "watch": "bun build standalone.ts --outfile out/standalone.js --target browser --watch",
     "typecheck": "bunx tsc --noEmit",
-    "test": "bunx playwright test tests --reporter=line",
-    "check": "bun run typecheck && bun run build",
+    "test": "bun run test:unit && bun run test:e2e",
+    "check": "bun run typecheck && bun run build && bun run test:unit && bun run size",
     "clean": "rm -rf dist",
-    "build:lib": "bun build index.ts define.ts tables.ts src/table/inline.ts src/table/preview.ts src/table/wysiwyg.ts --outdir dist --target browser --format esm --packages external --splitting --minify",
-    "build:standalone": "bun build standalone.ts --outfile dist/standalone.js --target browser --minify"
+    "build:lib": "bun build index.ts define.ts plugin.ts tables.ts blocks.ts src/table/inline.ts src/table/preview.ts src/table/wysiwyg.ts --outdir dist --target browser --format esm --packages external --splitting --minify",
+    "build:standalone": "bun build standalone.ts --outfile dist/standalone.js --target browser --minify",
+    "test:unit": "bun test tests/unit",
+    "test:e2e": "bunx playwright test",
+    "size": "bun scripts/size.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^7"
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
@@ -53,6 +51,14 @@
     "./define": {
       "types": "./dist/define.d.ts",
       "import": "./dist/define.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js"
+    },
+    "./blocks": {
+      "types": "./dist/blocks.d.ts",
+      "import": "./dist/blocks.js"
     },
     "./tables": {
       "types": "./dist/tables.d.ts",

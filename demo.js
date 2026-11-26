@@ -1,4 +1,5 @@
 import { tableInlinePlugin, tablePreviewPlugin, tableWysiwygPlugin } from './tables.ts';
+import { customBlocksPlugin } from './blocks.ts';
 
 const form = document.getElementById('demo-form');
 const output = document.getElementById('output');
@@ -28,3 +29,8 @@ customUploadEditor.upload = async (file) => {
     // Example custom upload: replace with `await fetch('/upload', ...)` returning a URL
     return { url: URL.createObjectURL(file), name: file.name };
 };
+
+const blocksEditor = document.getElementById('blocks-editor');
+blocksEditor.plugins = [customBlocksPlugin()];
+// Blob URLs keep the `photo` attribute short; real apps return a server URL.
+blocksEditor.upload = async (file) => URL.createObjectURL(file);

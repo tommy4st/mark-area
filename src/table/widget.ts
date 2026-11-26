@@ -1,9 +1,21 @@
-import { EditorSelection, type EditorState, StateField } from '@codemirror/state';
+import { EditorSelection, type EditorState, type Extension, StateField } from '@codemirror/state';
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
 import { hide } from '../preview.ts';
-import { cellActionFor, el, hostFor } from '../utils.ts';
-import { cursorCell, formatMarkdownTable, nextCell, parseMarkdownTable, rewriteTable, tableAt, type ParsedTable, type TableAlign, type TableData } from './core.ts';
+import { actionInterceptor, marksMode, strings } from '../host.ts';
+import { el } from '../utils.ts';
+import { applyInlineAction, inlineToMarkdown, renderInlineMarkdown, selectionOf, textOffset } from '../inline-edit.ts';
+import {
+    cursorCell,
+    formatMarkdownTable,
+    nextCell,
+    parseMarkdownTable,
+    rewriteTable,
+    tableAt,
+    type ParsedTable,
+    type TableAlign,
+    type TableData,
+} from './core.ts';
 
 type Focus = { r: number; c: number; offset?: number };
 export type TableEdit = TableData & { focus?: Focus };
@@ -113,7 +125,7 @@ class RawToolbarWidget extends WidgetType {
 export const tableRawToolbar = (items = defaultTableToolbar) =>
     StateField.define<DecorationSet>({
         create: (state) => rawToolbarDecos(state, items),
-        update: (_, tr) => rawToolbarDecos(tr.state, items),
+        update: (value, tr) => (tr.docChanged || tr.selection || tr.reconfigured ? rawToolbarDecos(tr.state, items) : value),
         provide: (f) => EditorView.decorations.from(f),
     });
 
@@ -122,58 +134,17 @@ const rawToolbarDecos = (state: EditorState, items: TableToolbarItem[]) => {
     return t ? Decoration.set(Decoration.widget({ widget: new RawToolbarWidget(items), block: true, side: 1 }).range(t.to)) : Decoration.none;
 };
 
+const escapePipes = (s: string) => s.replace(/(\\*)(\|)/g, (_, bs: string) => (bs.length % 2 ? `${bs}|` : `${bs}\\|`));
+
 const renderInlineCell = (cell: HTMLElement, raw: string) => {
     cell.textContent = '';
-    let last = 0;
-    for (const m of raw.matchAll(/\*\*([^*]+)\*\*|\*([^*]+)\*|~~([^~]+)~~|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)/g)) {
-        cell.append(
-            raw.slice(last, m.index),
-            m[1] ? el('strong', { textContent: m[1] })
-            : m[2] ? el('em', { textContent: m[2] })
-            : m[3] ? el('s', { textContent: m[3] })
-            : m[4] ? el('code', { className: 'cm-code', textContent: m[4] })
-            : el('a', { className: 'cm-link', href: m[6]!, textContent: m[5]! })
-        );
-        last = m.index + m[0].length;
-    }
-    cell.append(raw.slice(last));
+    renderInlineMarkdown(raw, cell, { linkClass: 'cm-link', codeClass: 'cm-code', unescapePipes: true });
 };
 
-/** `window.getSelection()` does not expose ranges inside shadow roots in Chromium, the root does. */
-const selectionOf = (node: Node): Selection | null =>
-    (node.getRootNode() as unknown as { getSelection?: () => Selection | null }).getSelection?.() ?? window.getSelection?.() ?? null;
+const showMarksOf = (view: EditorView) => view.state.facet(marksMode) === 'show';
+const hideMarksOf = (view: EditorView) => view.state.facet(marksMode) === 'hide';
 
-/** Character offset of `(node, offset)` within `cell`'s text. */
-const textOffset = (cell: Node, node: Node, offset: number) => {
-    const r = document.createRange();
-    r.selectNodeContents(cell);
-    r.setEnd(node, offset);
-    return r.toString().length;
-};
-
-const showMarksOf = (view: EditorView) => !!hostFor.get(view)?.showMarks;
-const hideMarksOf = (view: EditorView) => {
-    const host = hostFor.get(view);
-    return !!host?.hideMarks && !host?.showMarks;
-};
-
-const inlineTags: Record<string, string> = { STRONG: '**', B: '**', EM: '*', I: '*', S: '~~', STRIKE: '~~', DEL: '~~', CODE: '`' };
-const actionTags: Record<string, string> = { bold: 'strong', italic: 'em', strike: 's', code: 'code' };
-const actionMarkers: Record<string, string> = { bold: '**', italic: '*', strike: '~~', code: '`' };
-
-/** Serializes a rendered cell back to inline markdown. */
-const cellToMarkdown = (node: Node): string => {
-    if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
-    if (!(node instanceof HTMLElement)) return '';
-    if (node.tagName === 'BR') return ' ';
-    const inner = Array.from(node.childNodes).map(cellToMarkdown).join('');
-    const m = inlineTags[node.tagName];
-    if (m) return inner ? m + inner + m : '';
-    if (node.tagName === 'A') return `[${inner}](${node.getAttribute('href') ?? ''})`;
-    return inner;
-};
-
-/** Applies a toolbar action to the focused WYSIWYG table cell. Returns false when no cell is focused. */
+/** Applies a toolbar action to the focused WYSIWYG table cell. Returns false when no cell is focused or action passes through. */
 export function applyCellAction(view: EditorView, id: string): boolean {
     const sel = selectionOf(view.dom);
     const anchor = sel?.anchorNode;
@@ -182,68 +153,10 @@ export function applyCellAction(view: EditorView, id: string): boolean {
             ? (anchor instanceof HTMLElement ? anchor : anchor.parentElement)?.closest<HTMLElement>('.cm-table-wysiwyg [data-row]')
             : null;
     if (!sel || !cell) return false;
-    const marker = actionMarkers[id];
-    if (!marker && id !== 'link') return true;
-
-    // Expand a collapsed caret to the surrounding word
-    const range = sel.getRangeAt(0);
-    if (range.collapsed && range.startContainer.nodeType === Node.TEXT_NODE) {
-        const text = range.startContainer.textContent ?? '';
-        const isWord = (ch = '') => /[\p{L}\p{N}_]/u.test(ch);
-        let s = range.startOffset;
-        let e = s;
-        while (s > 0 && isWord(text[s - 1])) s--;
-        while (e < text.length && isWord(text[e])) e++;
-        range.setStart(range.startContainer, s);
-        range.setEnd(range.startContainer, e);
-    }
-
-    if (!hideMarksOf(view)) {
-        // Raw mode: toggle markers in the cell text
-        const a = textOffset(cell, range.startContainer, range.startOffset);
-        const b = textOffset(cell, range.endContainer, range.endOffset);
-        const text = cell.textContent ?? '';
-        const len = marker?.length ?? 0;
-        const around =
-            marker && text.slice(a - len, a) === marker && text.slice(b, b + len) === marker && (marker !== '*' || (text[a - 2] !== '*' && text[b + 1] !== '*'));
-        const inside = marker && !around && b - a >= len * 2 && text.slice(a, a + len) === marker && text.slice(b - len, b) === marker;
-        if (around || inside) {
-            const from = around ? a - len : a;
-            const to = around ? b + len : b;
-            cell.textContent = text.slice(0, from) + text.slice(from + len, to - len) + text.slice(to);
-            if (cell.firstChild) sel.setBaseAndExtent(cell.firstChild, from, cell.firstChild, to - len * 2);
-            return true;
-        }
-        const [open, close] = marker ? [marker, marker] : ['[', '](https://)'];
-        cell.textContent = text.slice(0, a) + open + text.slice(a, b) + close + text.slice(b);
-        if (cell.firstChild) sel.setBaseAndExtent(cell.firstChild, a + open.length, cell.firstChild, b + open.length);
-        return true;
-    }
-
-    // Rendered mode: unwrap if inside the target element, otherwise wrap the selection
-    const tag = marker ? actionTags[id]! : 'a';
-    for (let n: Node | null = range.commonAncestorContainer; n && n !== cell; n = n.parentNode) {
-        if (n instanceof HTMLElement && (n.tagName.toLowerCase() === tag || (marker && inlineTags[n.tagName] === marker))) {
-            const kids = Array.from(n.childNodes);
-            n.replaceWith(...kids);
-            if (kids.length) {
-                const r = document.createRange();
-                r.setStartBefore(kids[0]!);
-                r.setEndAfter(kids[kids.length - 1]!);
-                sel.removeAllRanges();
-                sel.addRange(r);
-            }
-            return true;
-        }
-    }
-    if (range.collapsed) return true;
-    const wrapper = el(tag as 'a');
-    if (tag === 'a') Object.assign(wrapper, { href: 'https://', className: 'cm-link' });
-    if (tag === 'code') wrapper.className = 'cm-code';
-    wrapper.append(range.extractContents());
-    range.insertNode(wrapper);
-    sel.selectAllChildren(wrapper);
-    return true;
+    return applyInlineAction(cell, sel, id, hideMarksOf(view), view.state.facet(strings).linkPrompt, {
+        linkClass: 'cm-link',
+        codeClass: 'cm-code',
+    });
 }
 
 /** Returns a copy of `t` with cell `(r, c)` set to `val` (row 0 is the header). */
@@ -255,9 +168,17 @@ const withCell = (t: TableData, r: number, c: number, val: string): TableData =>
     return { headers, aligns: t.aligns, rows };
 };
 
-const focusCell = (root: Node, { r, c, offset }: Focus) =>
+const focusCell = (view: EditorView, tablePos: number, { r, c, offset }: Focus) =>
     requestAnimationFrame(() => {
-        const target = (root as ParentNode).querySelector?.<HTMLElement>(`.cm-table-wysiwyg [data-row="${r}"][data-col="${c}"]`);
+        if (!view.dom.isConnected) return;
+        let tableWrap: HTMLElement | null = null;
+        for (const el of view.dom.querySelectorAll<HTMLElement>('.cm-table-wysiwyg')) {
+            if (view.posAtDOM(el) === tablePos) {
+                tableWrap = el;
+                break;
+            }
+        }
+        const target = tableWrap?.querySelector<HTMLElement>(`[data-row="${r}"][data-col="${c}"]`);
         if (!target) return;
         target.focus();
         const sel = selectionOf(target);
@@ -275,7 +196,8 @@ class TableWidget extends WidgetType {
         readonly interactive: boolean,
         readonly toolbar: TableToolbarItem[],
         readonly hide: boolean,
-        readonly show: boolean
+        readonly show: boolean,
+        readonly readOnly: boolean
     ) {
         super();
     }
@@ -284,7 +206,8 @@ class TableWidget extends WidgetType {
             this.raw === other.raw &&
             this.interactive === other.interactive &&
             this.hide === other.hide &&
-            this.show === other.show
+            this.show === other.show &&
+            this.readOnly === other.readOnly
         );
     }
     toDOM(view: EditorView) {
@@ -295,11 +218,10 @@ class TableWidget extends WidgetType {
         const commit = (edit: (t: ParsedTable) => TableEdit) => {
             const cur = !view.state.readOnly && resolve();
             if (!cur) return;
-            const root = wrap.getRootNode();
             const next = edit(cur);
             const insert = formatMarkdownTable(next);
             if (insert !== view.state.sliceDoc(cur.from, cur.to)) view.dispatch({ changes: { from: cur.from, to: cur.to, insert } });
-            if (next.focus) focusCell(root, next.focus);
+            if (next.focus) focusCell(view, cur.from, next.focus);
         };
 
         let last: Required<Focus> | null = null;
@@ -327,7 +249,8 @@ class TableWidget extends WidgetType {
                 return;
             }
 
-            const value = () => (this.hide ? cellToMarkdown(cell) : (cell.textContent ?? '')).replace(/\|/g, '\\|').replace(/\n+/g, ' ').trim();
+            const value = () =>
+                escapePipes(this.hide ? inlineToMarkdown(cell, ' ') : (cell.textContent ?? '')).replace(/\n+/g, ' ').trim();
             cell.contentEditable = String(!view.state.readOnly);
             cell.spellcheck = false;
             cell.onfocus = () => {
@@ -392,17 +315,24 @@ class TableWidget extends WidgetType {
 }
 
 /** Renders tables as widgets: read-only previews revealed under the cursor, or always-on editable tables (`interactive`). */
-export const tableWidgets = (interactive: boolean, toolbar = defaultTableToolbar) =>
+export const tableWidgets = (interactive: boolean, toolbar = defaultTableToolbar): Extension => [
+    interactive ? actionInterceptor.of(applyCellAction) : [],
     ViewPlugin.fromClass(
         class {
             decorations = Decoration.none;
             atomic = Decoration.none;
             constructor(view: EditorView) {
-                if (interactive) cellActionFor.set(view, (id) => applyCellAction(view, id));
                 this.build(view);
             }
             update(u: ViewUpdate) {
-                if (u.docChanged || u.viewportChanged || u.selectionSet || u.focusChanged || u.transactions.some((tr) => tr.reconfigured)) {
+                if (
+                    u.docChanged ||
+                    u.viewportChanged ||
+                    u.selectionSet ||
+                    u.focusChanged ||
+                    u.transactions.some((tr) => tr.reconfigured) ||
+                    syntaxTree(u.state) !== syntaxTree(u.startState)
+                ) {
                     this.build(u.view);
                 }
             }
@@ -429,7 +359,8 @@ export const tableWidgets = (interactive: boolean, toolbar = defaultTableToolbar
                                 interactive,
                                 toolbar,
                                 hideMarksOf(view),
-                                show
+                                show,
+                                state.readOnly
                             );
                             const w = Decoration.replace({ widget }).range(first.from, first.to);
                             out.push(w);
@@ -455,7 +386,8 @@ export const tableWidgets = (interactive: boolean, toolbar = defaultTableToolbar
             decorations: (p) => p.decorations,
             provide: (plugin) => EditorView.atomicRanges.of((view) => view.plugin(plugin)?.atomic ?? Decoration.none),
         }
-    );
+    ),
+];
 
 export interface TableToolbarOptions {
     toolbar?: TableToolbarItem[];
