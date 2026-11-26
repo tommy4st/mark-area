@@ -1,6 +1,6 @@
 {
   "name": "@tommy4st/mark-area",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A lightweight CodeMirror 6 markdown editor custom element with live preview and form association",
   "license": "CC0-1.0",
   "main": "dist/index.js",
