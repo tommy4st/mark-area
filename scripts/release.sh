@@ -16,7 +16,8 @@ bun pm version "${1:-patch}" --no-git-tag-version
 tag="v$(bun -p "require('./package.json').version")"
 # Point the README install and CDN snippets at the new tag.
 sed -i.bak -E "s#(mark-area[@\#]|releases/download/)v[0-9]+\.[0-9]+\.[0-9]+#\1$tag#g" README.md && rm README.md.bak
-git commit -qam "$tag"
+# `[skip ci]`: the tag commit below runs the same checks (with dist) in the publish pipelines.
+git commit -qam "$tag [skip ci]"
 
 git add -f dist
 tree=$(git write-tree)
