@@ -16,9 +16,9 @@ You can use `mark-area` via any of the following three distribution channels:
 Install directly from GitHub without public npm:
 
 ```bash
-bun add github:tommy4st/mark-area#v0.1.1
+bun add github:tommy4st/mark-area#v0.1.4
 # or
-npm install github:tommy4st/mark-area#v0.1.1
+npm install github:tommy4st/mark-area#v0.1.4
 ```
 
 Import in your TypeScript/JavaScript application:
@@ -44,10 +44,10 @@ Load the pre-bundled bundle directly via jsDelivr or raw GitHub release assets:
 
 ```html
 <!-- Via jsDelivr CDN -->
-<script type="module" src="https://cdn.jsdelivr.net/gh/tommy4st/mark-area@v0.1.1/dist/standalone.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/gh/tommy4st/mark-area@v0.1.4/dist/standalone.js"></script>
 
 <!-- Or from GitHub Release assets -->
-<script type="module" src="https://github.com/tommy4st/mark-area/releases/download/v0.1.1/standalone.js"></script>
+<script type="module" src="https://github.com/tommy4st/mark-area/releases/download/v0.1.4/standalone.js"></script>
 ```
 
 ### 3. GitHub Packages (`npm.pkg.github.com`)
@@ -71,7 +71,7 @@ npm install @tommy4st/mark-area
 ## Quick Start
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/gh/tommy4st/mark-area@v0.1.1/dist/standalone.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/gh/tommy4st/mark-area@v0.1.4/dist/standalone.js"></script>
 
 <form>
   <mark-area name="content" rows="6" required placeholder="Write Markdown...">
