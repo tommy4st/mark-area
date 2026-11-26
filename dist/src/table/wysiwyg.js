@@ -1,0 +1,1 @@
+import{I}from"../../index-mw4f79bv.js";import{M}from"../../index-bpng4p68.js";import"../../index-fay2d9ap.js";import"../../index-y2gdknrv.js";import"../../index-vpjssw8h.js";export{M as defaultTableToolbar,I as tableWysiwygPlugin};

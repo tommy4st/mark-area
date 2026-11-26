@@ -1,0 +1,1 @@
+import{h,W}from"./index-vpjssw8h.js";import"./index-fay2d9ap.js";import{b,H,y,k}from"./index-wavpnn8f.js";export{y as MarkArea,W as actions,h as defaultStrings,b as defaultUpload,k as defineMarkArea,H as styles};
