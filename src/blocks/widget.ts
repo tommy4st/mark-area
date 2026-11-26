@@ -5,7 +5,7 @@ import { selectionTouches } from '../preview.ts';
 import { icon } from '../commands.ts';
 import { el, safeUrl } from '../utils.ts';
 import { actionInterceptor, markAreaHost, marksMode, strings, type Strings } from '../host.ts';
-import { applyInlineAction, inlineToMarkdown, renderInlineMarkdown, selectionOf } from '../inline-edit.ts';
+import { applyInlineAction, inlineToMarkdown, rangeIn, renderInlineMarkdown, selectionOf } from '../inline-edit.ts';
 import { blockAt, formatAttrs, parseBlock, type BlockContextApi, type BlockRenderer, type ParsedBlock } from './core.ts';
 
 const CODE_ICON = icon('M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5');
@@ -113,13 +113,12 @@ const makeField = (node: HTMLElement, label: string, multiline: boolean, rich = 
       e.preventDefault();
       const text = e.clipboardData?.getData('text/plain') ?? '';
       const sel = selectionOf(node);
-      if (!sel?.rangeCount) return;
-      const range = sel.getRangeAt(0);
+      const range = sel && rangeIn(sel, node);
+      if (!range) return;
       range.deleteContents();
       const t = document.createTextNode(text);
       range.insertNode(t);
-      range.setStartAfter(t);
-      range.collapse(true);
+      sel.collapse(t, t.length);
     };
   }
   node.onmousedown = (e) => e.stopPropagation();

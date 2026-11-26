@@ -1,5 +1,5 @@
 {
-  "exclude": ["node_modules", "dist", "scripts", "tests", "test-results"],
+  "exclude": ["node_modules", "dist", "scripts", "tests", "test-results", "playwright.config.ts"],
   "compilerOptions": {
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "target": "ESNext",

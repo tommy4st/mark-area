@@ -105,6 +105,7 @@ test('the toolbar is one Tab stop with arrow-key navigation; label clicks focus 
 });
 
 test('pasting rich text that carries a picture pastes the text instead of uploading', async ({ page }) => {
+  test.skip(test.info().project.name === 'firefox', 'Firefox drops clipboardData from synthetic paste events');
   await serve(page, '<mark-area id="e" uploads></mark-area>', `
     document.getElementById('e').upload = async () => 'http://x/pic.png';`);
   await page.locator('mark-area .cm-content').click();

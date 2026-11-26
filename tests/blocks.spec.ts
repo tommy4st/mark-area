@@ -180,7 +180,8 @@ test('rich block body toggles bold/italic/strike/code without execCommand and pa
   await page.evaluate(() => {
     const e = document.getElementById('e') as any;
     const p = e.shadowRoot!.querySelector('.ma-block-body p')!;
-    const sel = e.shadowRoot!.getSelection();
+    // Chromium exposes shadow selections only on the root; Firefox and WebKit on the document.
+    const sel = e.shadowRoot!.getSelection?.() ?? document.getSelection()!;
     sel.collapse(p.firstChild, 2); // inside "hello"
     e.exec('bold');
     e.exec('italic');

@@ -24,7 +24,7 @@
     "build:standalone": "bun build standalone.ts --outfile dist/standalone.js --target browser --minify",
     "test:unit": "bun test tests/unit",
     "test:e2e": "bunx playwright test",
-    "test:e2e:ci": "bunx playwright install --with-deps chromium && bunx playwright test",
+    "test:e2e:ci": "bunx playwright install --with-deps chromium firefox webkit && bunx playwright test",
     "size": "bun scripts/size.ts"
   },
   "devDependencies": {

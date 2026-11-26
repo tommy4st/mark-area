@@ -4,7 +4,7 @@ import { syntaxTree } from '@codemirror/language';
 import { hide, selectionTouches } from '../preview.ts';
 import { actionInterceptor, actionLabels, marksMode, strings, type ActionLabels } from '../host.ts';
 import { el } from '../utils.ts';
-import { applyInlineAction, inlineToMarkdown, renderInlineMarkdown, selectionOf, textOffset } from '../inline-edit.ts';
+import { applyInlineAction, inlineToMarkdown, rangeIn, renderInlineMarkdown, selectionOf, textOffset } from '../inline-edit.ts';
 import {
   cursorCell,
   formatMarkdownTable,
@@ -155,7 +155,7 @@ const hideMarksOf = (view: EditorView) => view.state.facet(marksMode) === 'hide'
 /** Applies a toolbar action to the focused WYSIWYG table cell. Returns false when no cell is focused or action passes through. */
 export function applyCellAction(view: EditorView, id: string): boolean {
   const sel = selectionOf(view.dom);
-  const anchor = sel?.anchorNode;
+  const anchor = sel && rangeIn(sel, view.dom)?.startContainer;
   const cell =
     anchor && view.dom.contains(anchor)
       ? (anchor instanceof HTMLElement ? anchor : anchor.parentElement)?.closest<HTMLElement>('.cm-table-wysiwyg [data-row]')
@@ -236,7 +236,8 @@ class TableWidget extends WidgetType {
     let last: Required<Focus> | null = null;
     const saveCaret = (cell: HTMLElement, r: number, c: number) => {
       const sel = selectionOf(cell);
-      if (sel?.anchorNode && cell.contains(sel.anchorNode)) last = { r, c, offset: textOffset(cell, sel.anchorNode, sel.anchorOffset) };
+      const range = sel && rangeIn(sel, cell);
+      if (range && cell.contains(range.startContainer)) last = { r, c, offset: textOffset(cell, range.startContainer, range.startOffset) };
     };
 
     const bindCell = (cell: HTMLTableCellElement, r: number, c: number, text: string) => {

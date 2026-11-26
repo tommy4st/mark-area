@@ -8,6 +8,22 @@ export const selectionOf = (node: Node): Selection | null =>
   window.getSelection?.() ??
   null;
 
+type ComposedSelection = Selection & { getComposedRanges?: (o: { shadowRoots: ShadowRoot[] }) => StaticRange[] };
+
+/**
+ * The selected range as seen from inside `node`'s shadow root (null when nothing is selected).
+ * Safari retargets `getRangeAt()` and `anchorNode` to the shadow host; `getComposedRanges()` does not.
+ */
+export const rangeIn = (sel: Selection, node: Node): Range | null => {
+  const root = node.getRootNode();
+  const composed = root instanceof ShadowRoot ? (sel as ComposedSelection).getComposedRanges?.({ shadowRoots: [root] })[0] : undefined;
+  if (!composed) return sel.rangeCount ? sel.getRangeAt(0) : null;
+  const r = document.createRange();
+  r.setStart(composed.startContainer, composed.startOffset);
+  r.setEnd(composed.endContainer, composed.endOffset);
+  return r;
+};
+
 /** Character offset of `(node, offset)` within `root`'s text. */
 export const textOffset = (root: Node, node: Node, offset: number): number => {
   const r = document.createRange();
@@ -196,9 +212,9 @@ export const applyInlineAction = (
 ): boolean => {
   if (PASSTHROUGH.has(id)) return false;
   const marker = ACTION_MARKERS[id];
-  if ((!marker && id !== 'link') || !sel.rangeCount) return true;
+  const range = rangeIn(sel, root);
+  if ((!marker && id !== 'link') || !range) return true;
 
-  const range = sel.getRangeAt(0);
   expandWord(range);
 
   if (!rendered) {
