@@ -1,31 +1,51 @@
 name: Publish
 
 # Tags are created by scripts/release.sh (devbox run release).
-# Needs the secret PACKAGES_TOKEN: an access token with the write:package scope.
+# Needs the secret PACKAGE_TOKEN: an access token with the write:package scope.
+# Runs on the `buildah` runner, which has no Node.js: no JS actions (checkout, setup-bun), plain shell steps only.
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   publish:
-    runs-on: docker
+    runs-on: buildah
+    env:
+      REGISTRY: ${{ github.server_url }}/api/packages/${{ github.repository_owner }}/npm/
     steps:
-      - name: Checkout repository
-        uses: https://code.forgejo.org/actions/checkout@v4
+      - name: Check out repository
+        run: |
+          SERVER_HOST=$(echo "${{ github.server_url }}" | sed -e 's|^https\?://||')
+          git init -q .
+          git fetch -q --depth=1 "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@$SERVER_HOST/${{ github.repository }}.git" "${{ github.ref }}"
+          git checkout -q FETCH_HEAD
 
-      - name: Setup Bun
-        uses: https://github.com/oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+      - name: Install Bun
+        run: |
+          curl -fsSL https://bun.sh/install | bash
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
 
-      - name: Install dependencies & build
+      - name: Typecheck, build and test
         run: |
           bun install --frozen-lockfile
           bun run check
           bun run test:e2e:ci
 
-      - name: Publish to the Forgejo package registry
+      - name: Publish (skipped when the version already exists)
         env:
-          NPM_CONFIG_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
-        run: bun publish --registry "$GITHUB_SERVER_URL/api/packages/$GITHUB_REPOSITORY_OWNER/npm/"
+          NPM_CONFIG_TOKEN: ${{ secrets.PACKAGE_TOKEN }}
+        run: |
+          VERSION=$(bun -p "require('./package.json').version")
+          if curl -fsS -H "Authorization: token $NPM_CONFIG_TOKEN" "${REGISTRY}@tommy4st%2Fmark-area" | grep -q "\"$VERSION\""; then
+            echo "Version $VERSION already published, skipping"
+          else
+            bun publish --registry "$REGISTRY"
+          fi
+
+      - name: Link package to repository
+        run: |
+          curl -fsS -X POST -H "Authorization: token ${{ secrets.PACKAGE_TOKEN }}" \
+            "${{ github.server_url }}/api/v1/packages/${{ github.repository_owner }}/npm/%40tommy4st%2Fmark-area/-/link/${{ github.event.repository.name }}" \
+            || echo "Not linked (already linked?)"

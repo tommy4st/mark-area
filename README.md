@@ -125,7 +125,7 @@ import { MarkArea, defineMarkArea } from '@tommy4st/mark-area';
 | `uploads` | `uploads` | `boolean` | `false` | Enables image/file actions, shortcuts, drop and paste. `uploads="off"` disables. |
 | `toolbar` | `toolbar` | `string[]` | all actions | Space-separated action ids, in order, e.g. `toolbar="bold italic link"`. |
 | — | — | — | — | Add `mode` to `toolbar` (e.g. `toolbar="bold italic mode"`) for a button cycling Code only (`show-marks`) → Code on enter (default) → WYSIWYG only (`hide-marks`). Not in the default toolbar. |
-| — | `labels` | `Record<id, { label?, title? }>` | English ids | Translates button `aria-label` (`label`) and tooltip (`title`) by action id. Overrides an action's default `label`. |
+| — | `labels` | `Record<id, { label?, title? }>` | English ids | Translates button `aria-label` (`label`) and tooltip (`title`) by action id. Overrides an action's default `label`. Also applies to table toolbar buttons (`row-add`, `row-remove`, `col-add`, `col-remove`, `align`; there `label` is the button text) and beats the table plugin's `labels` option. |
 
 Icon size: set `--ma-icon-size` (default `1rem`).
 

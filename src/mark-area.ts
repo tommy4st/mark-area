@@ -20,6 +20,8 @@ import {
   type MarkAreaHost,
   type MarksMode,
   type Strings,
+  actionLabels,
+  type ActionLabels,
   type UploadKind,
 } from './host.ts';
 import { actionMap, markModes, modeAction } from './commands.ts';
@@ -29,7 +31,6 @@ import { getSheet, styles } from './styles.ts';
 import { defaultUpload, uploadOne, uploadSnippets, whileUploading } from './upload.ts';
 import { el, emit } from './utils.ts';
 
-type ActionLabels = Record<string, { label?: string; title?: string }>;
 
 /** Reconfigurable parts of the editor; each lives in its own compartment. */
 type Part = 'history' | 'strings' | 'keys' | 'plugins' | 'marks' | 'state' | 'attrs';
@@ -169,7 +170,7 @@ export class MarkArea extends HTMLElement implements MarkAreaHost {
       case 'history':
         return history();
       case 'strings':
-        return strings.of(this.#strings);
+        return [strings.of(this.#strings), actionLabels.of(this.#labels)];
       case 'keys':
         return keymap.of(
           [...this.#activeActions().values()]
@@ -298,7 +299,8 @@ export class MarkArea extends HTMLElement implements MarkAreaHost {
     });
   }
 
-  attributeChangedCallback(name: string, _oldVal: string | null, newVal: string | null) {
+  attributeChangedCallback(name: string, oldVal: string | null, newVal: string | null) {
+    if (oldVal === newVal) return;
     if (!this.#view && !this.#state) return;
     switch (name) {
       case 'value':
@@ -566,7 +568,9 @@ export class MarkArea extends HTMLElement implements MarkAreaHost {
   }
   set labels(v: ActionLabels | null | undefined) {
     this.#labels = v ?? {};
-    if (this.#view) this.#syncToolbar();
+    if (!this.#view) return;
+    this.#apply('strings');
+    this.#syncToolbar();
   }
 
   /** All user-facing strings outside the toolbar; assign a partial map to override (see `defaultStrings`). */

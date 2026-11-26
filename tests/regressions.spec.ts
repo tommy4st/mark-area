@@ -131,3 +131,26 @@ test('setting a URL on a reference-style link makes it an inline link', async ({
   });
   expect(await value(page)).toBe('see [text](http://u) here');
 });
+
+test('typing fires one input event per keystroke; form reset restores the default', async ({ page }) => {
+  await serve(page, '<form><mark-area id="e" name="notes" value="hi"></mark-area></form>', `
+    window.inputs = 0; document.getElementById('e').addEventListener('input', () => window.inputs++);`);
+  await page.locator('mark-area .cm-content').click();
+  await page.keyboard.press('End');
+  await page.keyboard.type('!');
+  expect(await page.evaluate(() => (window as any).inputs)).toBe(1);
+  expect(await page.evaluate(() => new FormData(document.querySelector('form')!).get('notes'))).toBe('hi!');
+  await page.evaluate(() => document.querySelector('form')!.reset());
+  expect(await value(page)).toBe('hi');
+});
+
+test('editor labels translate table toolbar buttons', async ({ page }) => {
+  await serve(page, '<mark-area id="e"></mark-area>', `
+    const e = document.getElementById('e'); e.plugins = [ma.tableWysiwygPlugin({ labels: { 'row-add': { label: 'Option' } } })];
+    e.value = '| a |\\n| - |\\n| b |';`);
+  const rowAdd = page.locator('mark-area [data-table-action="row-add"]');
+  await expect(rowAdd).toHaveText('Option');
+  await page.evaluate(() => ((document.getElementById('e') as any).labels = { 'row-add': { label: 'Zeile', title: 'Zeile hinzufügen' } }));
+  await expect(rowAdd).toHaveText('Zeile');
+  await expect(rowAdd).toHaveAttribute('title', 'Zeile hinzufügen');
+});

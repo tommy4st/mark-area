@@ -46,3 +46,8 @@ export const strings = Facet.define<Partial<Strings>, Strings>({
 
 /** Lets plugins (WYSIWYG tables, block fields) take over toolbar actions; a handler returns true when handled. */
 export const actionInterceptor = Facet.define<(view: EditorView, id: string) => boolean>();
+
+/** Per-id `label` / `title` overrides (`editor.labels`), shared by the main toolbar and plugin toolbars such as tables. */
+export type ActionLabels = Record<string, { label?: string; title?: string }>;
+const noLabels: ActionLabels = {};
+export const actionLabels = Facet.define<ActionLabels, ActionLabels>({ combine: (v) => v[0] ?? noLabels });

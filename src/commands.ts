@@ -196,7 +196,8 @@ const pickUpload = (kind: UploadKind) => (view: EditorView) => {
   return true;
 };
 
-const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+const nav = typeof navigator !== 'undefined' ? (navigator as Navigator & { userAgentData?: { platform: string } }) : undefined;
+const mac = /Mac|iPhone|iPad/.test(nav?.userAgentData?.platform || nav?.userAgent || '');
 export const mod = mac ? '⌘' : 'Ctrl+';
 const shift = mac ? '⇧' : 'Shift+';
 export const alt = mac ? '⌥' : 'Alt+';
@@ -204,7 +205,8 @@ export const alt = mac ? '⌥' : 'Alt+';
 export const icon = (d: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="${d}"/></svg>`;
 
-export const actions: EditorAction[] = [
+/** Built-in actions, shared by every element (frozen). */
+export const actions: readonly EditorAction[] = Object.freeze([
   { id: 'undo', run: undo, hint: mod + 'Z', html: icon('M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3') },
   { id: 'redo', run: redo, hint: mod + shift + 'Z', html: icon('m15 15 6-6m0 0-6-6m6 6H9a6 6 0 0 0 0 12h3') },
   { id: 'bold', run: wrap('**'), key: 'Mod-b', hint: mod + 'B', html: icon('M7 4.5h5.5a3.5 3.5 0 0 1 0 7H7m0-7v15m0-8h6.5a3.75 3.75 0 0 1 0 8H7') },
@@ -278,7 +280,7 @@ export const actions: EditorAction[] = [
       'm18.375 12.739-7.693 7.693a4.5 4.5 0 0 1-6.364-6.364l10.94-10.94A3 3 0 1 1 19.5 7.372L8.552 18.32m.009-.01-.01.01m5.699-9.941-7.81 7.81a1.5 1.5 0 0 0 2.112 2.13'
     ),
   },
-];
+]);
 
 export const actionMap = new Map(actions.map((a) => [a.id, a]));
 

@@ -2,7 +2,7 @@ import { EditorSelection, type EditorState, type Extension, StateField } from '@
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
 import { hide, selectionTouches } from '../preview.ts';
-import { actionInterceptor, marksMode, strings } from '../host.ts';
+import { actionInterceptor, actionLabels, marksMode, strings, type ActionLabels } from '../host.ts';
 import { el } from '../utils.ts';
 import { applyInlineAction, inlineToMarkdown, renderInlineMarkdown, selectionOf, textOffset } from '../inline-edit.ts';
 import {
@@ -78,12 +78,14 @@ export const defaultTableToolbar: TableToolbarItem[] = [
 ];
 
 /** Button bar shared by the WYSIWYG widget and the raw-table toolbar. */
-const toolbarEl = (items: TableToolbarItem[], run: (item: TableToolbarItem) => void, className = '') => {
+const toolbarEl = (items: TableToolbarItem[], labels: ActionLabels, run: (item: TableToolbarItem) => void, className = '') => {
   const bar = el('div', { className: 'cm-table-controls ' + className }, 'table-controls');
   for (const item of items) {
+    // `editor.labels` beat the plugin's `labels` option.
+    const { label, title } = { ...item, ...labels[item.id] };
     const b = el(
       'button',
-      { type: 'button', tabIndex: -1, className: 'cm-table-btn', textContent: item.label, title: item.title, ariaLabel: item.title },
+      { type: 'button', tabIndex: -1, className: 'cm-table-btn', textContent: label, title, ariaLabel: title },
       'table-button'
     );
     b.dataset.tableAction = item.id;
@@ -99,15 +101,19 @@ const toolbarEl = (items: TableToolbarItem[], run: (item: TableToolbarItem) => v
 };
 
 class RawToolbarWidget extends WidgetType {
-  constructor(readonly items: TableToolbarItem[]) {
+  constructor(
+    readonly items: TableToolbarItem[],
+    readonly labels: ActionLabels
+  ) {
     super();
   }
   override eq(o: RawToolbarWidget) {
-    return o.items === this.items;
+    return o.items === this.items && o.labels === this.labels;
   }
   toDOM(view: EditorView) {
     return toolbarEl(
       this.items,
+      this.labels,
       (item) => {
         const head = view.state.selection.main.head;
         const t = !view.state.readOnly && tableAt(view.state, head);
@@ -132,7 +138,8 @@ export const tableRawToolbar = (items = defaultTableToolbar) =>
 
 const rawToolbarDecos = (state: EditorState, items: TableToolbarItem[]) => {
   const t = !state.readOnly && tableAt(state, state.selection.main.head);
-  return t ? Decoration.set(Decoration.widget({ widget: new RawToolbarWidget(items), block: true, side: 1 }).range(t.to)) : Decoration.none;
+  const widget = t && new RawToolbarWidget(items, state.facet(actionLabels));
+  return widget ? Decoration.set(Decoration.widget({ widget, block: true, side: 1 }).range(t.to)) : Decoration.none;
 };
 
 const escapePipes = (s: string) => s.replace(/(\\*)(\|)/g, (_, bs: string) => (bs.length % 2 ? `${bs}|` : `${bs}\\|`));
@@ -198,7 +205,8 @@ class TableWidget extends WidgetType {
     readonly toolbar: TableToolbarItem[],
     readonly hide: boolean,
     readonly show: boolean,
-    readonly readOnly: boolean
+    readonly readOnly: boolean,
+    readonly labels: ActionLabels
   ) {
     super();
   }
@@ -208,7 +216,8 @@ class TableWidget extends WidgetType {
       this.interactive === other.interactive &&
       this.hide === other.hide &&
       this.show === other.show &&
-      this.readOnly === other.readOnly
+      this.readOnly === other.readOnly &&
+      this.labels === other.labels
     );
   }
   toDOM(view: EditorView) {
@@ -300,7 +309,7 @@ class TableWidget extends WidgetType {
 
     if (this.interactive && !view.state.readOnly) {
       wrap.append(
-        toolbarEl(this.toolbar, (item) => {
+        toolbarEl(this.toolbar, this.labels, (item) => {
           const { c = 0, r = -1, offset } = last ?? {};
           commit((t) => {
             const edit = item.run(t, c, r);
@@ -360,7 +369,8 @@ export const tableWidgets = (interactive: boolean, toolbar = defaultTableToolbar
                 toolbar,
                 hideMarksOf(view),
                 show,
-                state.readOnly
+                state.readOnly,
+                state.facet(actionLabels)
               );
               const w = Decoration.replace({ widget }).range(first.from, first.to);
               out.push(w);
