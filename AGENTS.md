@@ -16,6 +16,7 @@
 - `devbox run check` (or `bun run check`) — Run `tsc --noEmit`, build `dist/`, run unit tests, and check the bundle size budget (`scripts/size.ts`, 120 KB gzip for `define.ts` with dependencies). Always run this after modifying source files.
 - `devbox run typecheck` (or `bun run typecheck`) — Type-check without emitting files: browser sources (`tsconfig.json`), then tests and scripts with Bun types (`tsconfig.test.json`). E2E specs load `dist/standalone.js`; CI runs them with `bun run test:e2e:ci`.
 - `devbox run build` (or `bun run build`) — Build the split library and the standalone bundle.
+- Test output (`test-results/`, `playwright-report/`, `blob-report/`, `coverage/`) is disposable and gitignored: agents may delete it at any time without asking.
 
 ## Architecture & Conventions
 - **Formatting**: Use 2-space indentation (`indent_style = space`, `indent_size = 2`), LF line endings, and a final newline across all files (configured in `.editorconfig`).
